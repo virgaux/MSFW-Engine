@@ -7,6 +7,7 @@ import DiagnosticsPanel from './components/DiagnosticsPanel';
 import PluginManagerPanel from './components/PluginManagerPanel';
 import ExportPanel from './components/ExportPanel';
 import AnimationControls from './components/AnimationControls';
+import SnapshotViewerPanel from './components/SnapshotViewerPanel';
 
 import { applyBounce, updateSpringConfig } from './helpers/bounceProcessor';
 import { useAnimationPlayer } from './hooks/useAnimationPlayer';
@@ -90,6 +91,7 @@ function App() {
       <ResourceControlPanel />
       <DiagnosticsPanel />
       <PluginManagerPanel />
+      <SnapshotViewerPanel />
     </div>
   );
 }
