@@ -16,3 +16,5 @@ export default function MotionDropZone({ onFileDrop }) {
         </div>
     );
 }
+
+window.api.startOpenPose('video'); // or 'webcam'

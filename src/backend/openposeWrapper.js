@@ -1,12 +1,15 @@
+// src/backend/openposeWrapper.js
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const OPENPOSE_DIR = path.resolve(__dirname, '../../bin/openpose-1.7.0-binaries-win64-gpu');
-const OUTPUT_DIR = path.resolve(__dirname, '../../output/keypoints');
-const VIDEO_INPUT = path.resolve(__dirname, '../../input/video.mp4'); // Or null for webcam
+const OPENPOSE_DIR = path.resolve(__dirname, '../../../bin/openpose-1.7.0-binaries-win64-gpu');
+const OUTPUT_DIR = path.resolve(__dirname, '../../../output/keypoints');
+const VIDEO_INPUT = path.resolve(__dirname, '../../../input/video.mp4');
 
 function runOpenPose(useWebcam = false) {
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+
   const args = [
     '--model_pose', 'BODY_25',
     '--write_json', OUTPUT_DIR,
@@ -15,12 +18,11 @@ function runOpenPose(useWebcam = false) {
   ];
 
   if (useWebcam) {
-    args.push('--camera', '0'); // webcam
+    args.push('--camera', '0');
   } else {
     args.push('--video', VIDEO_INPUT);
   }
 
-  // Path to the OpenPose executable
   const exePath = path.join(OPENPOSE_DIR, 'bin', 'OpenPoseDemo.exe');
 
   console.log(`[OpenPose] Launching: ${exePath}`);

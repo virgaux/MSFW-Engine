@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import MotionDropZone from './components/MotionDropZone';
 import MotionViewer from './components/MotionViewer';
 import BounceControlPanel from './components/BounceControlPanel';
@@ -11,6 +11,15 @@ function App() {
     const [motionData, setMotionData] = useState(null);
     const [bounceConfig, setBounceConfig] = useState(null);
 
+    useEffect(() => {
+        if (window.api && window.api.poseListener) {
+            window.api.poseListener((data) => {
+                console.log('New pose data from OpenPose:', data.filename);
+                setMotionData(data.keypoints);
+            });
+        }
+    }, []);
+
     return (
         <div style={{ display: 'grid', gap: '1em', padding: '1em' }}>
             <h1 style={{ color: 'white' }}>MSFW Engine Alpha</h1>
@@ -20,8 +29,9 @@ function App() {
             <ExportPanel />
             <ResourceControlPanel />
             <DiagnosticsPanel />
-              <PluginManagerPanel />
+            <PluginManagerPanel />
         </div>
     );
 }
+
 export default App;
