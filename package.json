@@ -30,7 +30,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
-    "afterPack": "./installer/start-installer.bat"
+    "afterPack": "./installer/afterPack.js"
   },
   "dependencies": {
     "concurrently": "^9.2.0",

@@ -1,13 +1,21 @@
+# Node & Build Artifacts
 node_modules/
 output/
 bin/
+dist/
 *.zip
+*.nsh
+*.log
+
+# Installer & Scripts
 *.exe
 *.bat
 *.ps1
-*.nsh
+
+# Local Dev Build Output
 *_Final/
 *_Installer_Ready/
-# --- Allow these explicitly ---
+
+# --- Allow explicitly tracked installer scripts ---
 !installer/install.ps1
 !installer/start-installer.bat
