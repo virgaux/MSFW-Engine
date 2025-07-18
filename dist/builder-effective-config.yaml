@@ -18,4 +18,5 @@ nsis:
   perMachine: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+afterPack: ./installer/start-installer.js
 electronVersion: 36.2.0
