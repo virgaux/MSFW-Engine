@@ -1,55 +1,51 @@
-Write-Host "[MSFW Installer] Running setup via install.ps1..."
+# install.ps1 – Silent dependency bootstrap for MSFW Engine
+# Must be run by Electron afterPack stage
 
-# 📌 Define installer paths
-$nodeInstaller = "$PSScriptRoot\node-v22.17.1-x64.msi"
+Write-Host "[MSFW INSTALLER] Starting silent dependency installation..." -ForegroundColor Cyan
 
-# -------------------------------
-# ✅ Function: Check PowerShell version
-# -------------------------------
-function Ensure-PowerShell-UpToDate {
-    $minVersion = [Version]"7.3.0"
-    if ($PSVersionTable.PSVersion -lt $minVersion) {
-        Write-Host "PowerShell version is outdated. Updating..."
-        Start-Process msiexec.exe -ArgumentList "/i `"$PSScriptRoot\PowerShell-7.5.2-win-x64.msi`" /qn /norestart" -Wait -Verb RunAs
-    } else {
-        Write-Host "PowerShell version is up-to-date."
-    }
+# Set paths
+$nodeInstaller = "installer\node-v22.17.1-x64.msi"
+$pwshInstaller = "installer\PowerShell-7.5.2-win-x64.msi"
+
+# Function: Compare versions
+function IsVersionLessThan($v1, $v2) {
+    $v1 = [System.Version]::Parse($v1)
+    $v2 = [System.Version]::Parse($v2)
+    return $v1.CompareTo($v2) -lt 0
 }
 
-# -------------------------------
-# ✅ Function: Check Node.js version
-# -------------------------------
-function Ensure-NodeJS-LTS {
-    Write-Host "[MSFW Installer] Checking Node.js..."
-    $nodePath = Get-Command node -ErrorAction SilentlyContinue
-    if (-not $nodePath) {
-        Write-Host "Node.js not found. Installing..."
+# Step 1: Ensure PowerShell 7.2+ is installed
+try {
+    $pwshVersion = (pwsh -Command '$PSVersionTable.PSVersion.ToString()' 2>$null)
+    if (-not $pwshVersion -or (IsVersionLessThan $pwshVersion "7.2")) {
+        Write-Host "[MSFW] Installing or upgrading PowerShell..." -ForegroundColor Yellow
+        Start-Process msiexec.exe -ArgumentList "/i `"$pwshInstaller`" /qn /norestart" -Wait -Verb RunAs
+    } else {
+        Write-Host "[MSFW] PowerShell version $pwshVersion is already installed." -ForegroundColor Green
+    }
+} catch {
+    Write-Host "[MSFW] PowerShell not detected. Installing..." -ForegroundColor Red
+    Start-Process msiexec.exe -ArgumentList "/i `"$pwshInstaller`" /qn /norestart" -Wait -Verb RunAs
+}
+
+# Step 2: Ensure Node.js is installed and up-to-date
+try {
+    $nodeVersion = (node -v 2>$null).Replace("v", "")
+    if (-not $nodeVersion -or (IsVersionLessThan $nodeVersion "22.17.1")) {
+        Write-Host "[MSFW] Installing or upgrading Node.js..." -ForegroundColor Yellow
         Start-Process msiexec.exe -ArgumentList "/i `"$nodeInstaller`" /qn /norestart" -Wait -Verb RunAs
     } else {
-        $nodeVersion = & node -v
-        if ($nodeVersion -lt "v20.0.0") {
-            Write-Host "Node.js version ($nodeVersion) is outdated. Updating..."
-            Start-Process msiexec.exe -ArgumentList "/i `"$nodeInstaller`" /qn /norestart" -Wait -Verb RunAs
-        } else {
-            Write-Host "Node.js is already up-to-date: $nodeVersion"
-        }
+        Write-Host "[MSFW] Node.js version $nodeVersion is already installed." -ForegroundColor Green
     }
+} catch {
+    Write-Host "[MSFW] Node.js not found. Installing..." -ForegroundColor Red
+    Start-Process msiexec.exe -ArgumentList "/i `"$nodeInstaller`" /qn /norestart" -Wait -Verb RunAs
 }
 
-# -------------------------------
-# ✅ Function: Run npm install
-# -------------------------------
-function Run-NpmInstall {
-    $projectRoot = Split-Path $PSScriptRoot -Parent
-    Set-Location $projectRoot
-    Write-Host "[MSFW Installer] Installing Node packages via npm..."
-    & npm install
-    Write-Host "[MSFW Installer] npm packages installed successfully."
+# Step 3: Run npm install if node_modules is missing
+if (!(Test-Path "node_modules")) {
+    Write-Host "[MSFW] Running npm install to fetch project dependencies..." -ForegroundColor Cyan
+    npm install
 }
 
-# Run the full setup steps
-Ensure-PowerShell-UpToDate
-Ensure-NodeJS-LTS
-Run-NpmInstall
-
-Write-Host "[MSFW Installer] ✅ Setup complete."
+Write-Host "[MSFW INSTALLER] All dependencies installed successfully." -ForegroundColor Green
