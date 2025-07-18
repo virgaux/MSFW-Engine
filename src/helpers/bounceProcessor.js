@@ -1,26 +1,30 @@
-// This object will be updated by BounceControlPanel
 let springConfig = {
   gravity: 2.5,
   stiffness: 0.15,
-  damping: 0.9
+  damping: 0.9,
+  enabledZones: {
+    breast: true,
+    butt: true,
+    pelvis: true
+  }
 };
 
-// Apply new config from control panel
 export function updateSpringConfig(newConfig) {
   springConfig = {
     ...springConfig,
-    ...newConfig
+    ...newConfig,
+    enabledZones: {
+      ...springConfig.enabledZones,
+      ...(newConfig.enabledZones || {})
+    }
   };
   console.log('[BounceProcessor] Config updated:', springConfig);
 }
 
-// Apply bounce simulation
-const BOUNCE_JOINTS = {
-  leftBreast: 17,
-  rightBreast: 16,
-  pelvis: 8,
-  leftButt: 11,
-  rightButt: 14
+const ZONE_TO_INDEX = {
+  breast: [16, 17], // right, left ears (demo only)
+  pelvis: [8],
+  butt: [11, 14]
 };
 
 const bounceState = {};
@@ -29,32 +33,37 @@ export function applyBounce(keypoints) {
   if (!Array.isArray(keypoints)) return keypoints;
   const updated = [...keypoints];
 
-  for (const [name, i] of Object.entries(BOUNCE_JOINTS)) {
-    const idx = i * 3;
-    const x = keypoints[idx];
-    const y = keypoints[idx + 1];
-    const c = keypoints[idx + 2];
+  for (const [zone, indexes] of Object.entries(ZONE_TO_INDEX)) {
+    if (!springConfig.enabledZones[zone]) continue;
 
-    if (c < 0.05) continue;
+    for (const i of indexes) {
+      const idx = i * 3;
+      const x = keypoints[idx];
+      const y = keypoints[idx + 1];
+      const c = keypoints[idx + 2];
 
-    const state = bounceState[name] || {
-      position: { x, y },
-      velocity: { x: 0, y: 0 }
-    };
+      if (c < 0.05) continue;
 
-    const dx = x - state.position.x;
-    const dy = y - state.position.y;
+      const key = `${zone}_${i}`;
+      const state = bounceState[key] || {
+        position: { x, y },
+        velocity: { x: 0, y: 0 }
+      };
 
-    state.velocity.x = (state.velocity.x + dx * springConfig.stiffness) * springConfig.damping;
-    state.velocity.y = (state.velocity.y + dy * springConfig.stiffness + springConfig.gravity) * springConfig.damping;
+      const dx = x - state.position.x;
+      const dy = y - state.position.y;
 
-    state.position.x += state.velocity.x;
-    state.position.y += state.velocity.y;
+      state.velocity.x = (state.velocity.x + dx * springConfig.stiffness) * springConfig.damping;
+      state.velocity.y = (state.velocity.y + dy * springConfig.stiffness + springConfig.gravity) * springConfig.damping;
 
-    updated[idx] = state.position.x;
-    updated[idx + 1] = state.position.y;
+      state.position.x += state.velocity.x;
+      state.position.y += state.velocity.y;
 
-    bounceState[name] = state;
+      updated[idx] = state.position.x;
+      updated[idx + 1] = state.position.y;
+
+      bounceState[key] = state;
+    }
   }
 
   return updated;

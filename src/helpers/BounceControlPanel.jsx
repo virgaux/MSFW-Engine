@@ -8,9 +8,17 @@ const PRESETS = {
 };
 
 function BounceControlPanel({ onSave }) {
-  const [gravity, setGravity] = useState(2.5);
-  const [stiffness, setStiffness] = useState(0.15);
-  const [damping, setDamping] = useState(0.9);
+    const [gravity, setGravity] = useState(2.5);
+    const [stiffness, setStiffness] = useState(0.15);
+    const [damping, setDamping] = useState(0.9);
+    const [bounceConfig, setBounceConfig] = useState({
+    enabledZones: {
+        breast: true,
+        butt: true,
+        pelvis: true
+    }
+    });
+
 
   // Load saved config if available
   useEffect(() => {
@@ -36,7 +44,13 @@ function BounceControlPanel({ onSave }) {
     const config = { gravity, stiffness, damping };
     const json = JSON.stringify(config, null, 2);
     saveBounceConfig(json); // writes to disk
-    onSave && onSave(config); // updates App.jsx state
+    onSave && onSave({
+        gravity,
+        stiffness,
+        damping,
+        enabledZones: bounceConfig?.enabledZones || {}
+    });
+
   };
 
   return (
@@ -58,6 +72,58 @@ function BounceControlPanel({ onSave }) {
         <button onClick={() => handlePreset('ZeroG')}>Zero-G</button>
         <button onClick={handleSave} style={{ float: 'right' }}>Save Config</button>
       </div>
+      <h3>Active Zones</h3>
+        <label>
+        <input
+            type="checkbox"
+            checked={bounceConfig?.enabledZones?.breast ?? true}
+            onChange={e =>
+            setBounceConfig(prev => ({
+                ...prev,
+                enabledZones: {
+                ...prev.enabledZones,
+                breast: e.target.checked
+                }
+            }))
+            }
+        />
+        Breast
+        </label>
+
+        <label>
+        <input
+            type="checkbox"
+            checked={bounceConfig?.enabledZones?.butt ?? true}
+            onChange={e =>
+            setBounceConfig(prev => ({
+                ...prev,
+                enabledZones: {
+                ...prev.enabledZones,
+                butt: e.target.checked
+                }
+            }))
+            }
+        />
+        Butt
+        </label>
+
+        <label>
+        <input
+            type="checkbox"
+            checked={bounceConfig?.enabledZones?.pelvis ?? true}
+            onChange={e =>
+            setBounceConfig(prev => ({
+                ...prev,
+                enabledZones: {
+                ...prev.enabledZones,
+                pelvis: e.target.checked
+                }
+            }))
+            }
+        />
+        Pelvis
+        </label>
+
     </div>
   );
 }
