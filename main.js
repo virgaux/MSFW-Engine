@@ -1,6 +1,10 @@
 
 const { app, BrowserWindow } = require('electron');
 const { runOpenPose } = require('./src/backend/openposeWrapper');
+const { watchKeypoints } = require('./src/backend/poseDataWatcher');
+const { loadBounceConfig } = require('./src/helpers/bounceTagger');
+const { exportFBXToFile } = require('./src/backend/exporters/fbxExporter');
+
 const path = require('path');
 
 function createWindow () {
@@ -15,30 +19,73 @@ function createWindow () {
   win.loadURL('http://localhost:3000');
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+
+  watchKeypoints((keypoints, filename) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      win.webContents.send('pose-data', { keypoints, filename });
+    }
+
+    // ✅ Save frame data to fallback file
+    const playbackPath = path.join(__dirname, 'playback.json');
+    try {
+      fs.writeFileSync(playbackPath, JSON.stringify(keypoints, null, 2), 'utf-8');
+      console.log(`[MSFW] Auto-saved ${keypoints.length} frames to playback.json`);
+    } catch (err) {
+      console.error("[MSFW] Failed to write playback.json:", err.message);
+    }
+  });
+
+});
+
 
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
 
 
+const { ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { ipcMain } = require('electron');
+const { exportBVHToFile } = require('./src/backend/exporters/bvhExporter');
 
 ipcMain.handle('export-motion', async (event, config) => {
-  const exportDir = './output/exports';
+  const exportDir = path.join(__dirname, 'output', 'exports');
   fs.mkdirSync(exportDir, { recursive: true });
-  const filename = path.join(exportDir, `${config.filename}.${config.format}`);
-  const template = `# Export preset: ${config.skeleton}\n# Simulated ${config.format} data`;
 
-  fs.writeFileSync(filename, template, 'utf-8');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const outputPath = path.join(exportDir, `${config.filename}_${timestamp}.${config.format}`);
+
+  // ✅ Fallback loader
+  let frameData = config.frames;
+  if (!Array.isArray(frameData) || frameData.length === 0) {
+    try {
+      const fallbackPath = path.join(__dirname, 'playback.json');
+      frameData = JSON.parse(fs.readFileSync(fallbackPath, 'utf-8'));
+      console.warn("[MSFW] Using fallback playback.json for export.");
+    } catch (err) {
+      console.error("[MSFW] No valid frame data found for export.");
+      return false;
+    }
+  }
+
+  if (config.format === 'bvh') {
+    exportBVHToFile(frameData, outputPath, 30);
+  } else if (config.format === 'fbx') {
+    exportFBXToFile(frameData, outputPath);
+  } else {
+    const note = `# Unknown export format: ${config.format}`;
+    fs.writeFileSync(outputPath, note, 'utf-8');
+  }
+
+
+  // ✅ Optional: Open output folder after export
+  require('child_process').exec(`start "" "${exportDir}"`);
+
   return true;
 });
-
-const fs = require('fs');
-const path = require('path');
-const { ipcMain } = require('electron');
 
 ipcMain.handle('load-plugins', async () => {
   const pluginDir = './plugins';
@@ -61,10 +108,24 @@ ipcMain.handle('load-plugins', async () => {
   return results;
 });
 
-const { runOpenPose } = require('./src/backend/openposeWrapper');
+ipcMain.handle('load-bounce-config', async () => {
+  return loadBounceConfig();
+});
 
 ipcMain.handle('start-openpose', async (event, mode) => {
   const useWebcam = mode === 'webcam';
   runOpenPose(useWebcam);
   return true;
+});
+
+ipcMain.handle('save-playback', async (event, data) => {
+  const filePath = path.join(__dirname, 'playback.json');
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    console.log('[MSFW] Playback saved manually.');
+    return true;
+  } catch (err) {
+    console.error('[MSFW] Error saving playback:', err);
+    return false;
+  }
 });

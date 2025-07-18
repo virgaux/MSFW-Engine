@@ -1,0 +1,8 @@
+version: 1.0.0
+files:
+  - url: MSFW-Engine-Setup-1.0.0.exe
+    sha512: DLle3Pth8l/7ETfzuWgoH719o/CRWXufWH6r4chrAwvhxBw/2PMcs8A6vkkUBL8ovoWeVytBouqEUoXJswZiiw==
+    size: 90584697
+path: MSFW-Engine-Setup-1.0.0.exe
+sha512: DLle3Pth8l/7ETfzuWgoH719o/CRWXufWH6r4chrAwvhxBw/2PMcs8A6vkkUBL8ovoWeVytBouqEUoXJswZiiw==
+releaseDate: '2025-07-18T19:31:02.109Z'

@@ -1,0 +1,4 @@
+owner: virgaux
+repo: MSFW-Engine
+provider: github
+updaterCacheDirName: msfw-engine-updater

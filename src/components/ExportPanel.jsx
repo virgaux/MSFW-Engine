@@ -6,14 +6,15 @@ const presets = {
   Unity: { format: 'bvh', skeleton: 'humanoid' }
 };
 
-export default function ExportPanel() {
+export default function ExportPanel({ playbackFrames }) { // ✅ accept prop
   const [selected, setSelected] = useState('Blender');
   const [filename, setFilename] = useState('motion_export');
 
   const handleExport = () => {
     const config = {
       filename,
-      ...presets[selected]
+      ...presets[selected],
+      frames: playbackFrames  // ✅ now valid
     };
     window.api.exportMotion(config).then(() =>
       alert(`Exported ${config.filename}.${config.format} for ${selected}`)
@@ -33,6 +34,9 @@ export default function ExportPanel() {
       </select>
       <br/><br/>
       <button onClick={handleExport}>Export</button>
+      <button onClick={() => window.api.savePlayback(playbackFrames)}>
+        Save Playback
+      </button>
     </div>
   );
 }

@@ -87,7 +87,7 @@ function App() {
         }}
       />
 
-      <ExportPanel />
+      <ExportPanel playbackFrames={yourAnimationData} />
       <ResourceControlPanel />
       <DiagnosticsPanel />
       <PluginManagerPanel />

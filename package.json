@@ -13,16 +13,35 @@
     "appId": "com.mimeflow.msfwengine",
     "productName": "MSFW Engine",
     "files": ["**/*"],
-    "win": { "target": "nsis" }
+    "directories": {
+      "buildResources": "installer"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "license": "license.txt",
+      "runAfterFinish": true,
+      "perMachine": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "dependencies": {
-    "electron": "^25.3.1",
-    "concurrently": "^8.2.0",
-    "wait-on": "^7.0.1",
+    "concurrently": "^9.2.0",
+    "wait-on": "^8.0.3",
     "react": "^18.2.0",
+    "three": "^0.178.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "electron-builder": "^24.6.0"
+    "electron": "36.2.0",
+    "electron-builder": "^26.0.12"
   }
+  
 }
+
