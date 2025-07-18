@@ -6,7 +6,7 @@ import ResourceControlPanel from './components/ResourceControlPanel';
 import DiagnosticsPanel from './components/DiagnosticsPanel';
 import PluginManagerPanel from './components/PluginManagerPanel';
 import ExportPanel from './components/ExportPanel';
-import { applyBounce } from './helpers/bounceProcessor';
+import { applyBounce, updateSpringConfig } from './helpers/bounceProcessor';
 
 function App() {
     const [motionData, setMotionData] = useState(null);
@@ -27,7 +27,10 @@ function App() {
             <h1 style={{ color: 'white' }}>MSFW Engine Alpha</h1>
             <MotionDropZone onFileDrop={(file) => console.log('Video file dropped:', file)} />
             <MotionViewer data={motionData} />
-            <BounceControlPanel onSave={(config) => setBounceConfig(config)} />
+            <BounceControlPanel onSave={(config) => {
+                setBounceConfig(config);
+                updateSpringConfig(config);
+            }} />
             <ExportPanel />
             <ResourceControlPanel />
             <DiagnosticsPanel />
