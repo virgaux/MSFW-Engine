@@ -29,7 +29,8 @@
       "perMachine": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
-    }
+    },
+    "afterPack": "./installer/install.ps1"
   },
   "dependencies": {
     "concurrently": "^9.2.0",
