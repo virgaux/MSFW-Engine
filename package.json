@@ -30,7 +30,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
-    "afterPack": "./installer/install.ps1"
+    "afterPack": "./installer/start-installer.bat"
   },
   "dependencies": {
     "concurrently": "^9.2.0",

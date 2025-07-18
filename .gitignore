@@ -8,3 +8,6 @@ bin/
 *.nsh
 *_Final/
 *_Installer_Ready/
+# --- Allow these explicitly ---
+!installer/install.ps1
+!installer/start-installer.bat
