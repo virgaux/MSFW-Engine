@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+const { exportFBXToFile } = require('./fbxExporter');  // Import the FBX export function
 
 const presets = {
   Blender: { format: 'bvh', skeleton: 'standard_human' },
@@ -6,7 +7,7 @@ const presets = {
   Unity: { format: 'bvh', skeleton: 'humanoid' }
 };
 
-export default function ExportPanel({ playbackFrames }) { // ✅ accept prop
+export default function ExportPanel({ playbackFrames }) {
   const [selected, setSelected] = useState('Blender');
   const [filename, setFilename] = useState('motion_export');
 
@@ -14,11 +15,18 @@ export default function ExportPanel({ playbackFrames }) { // ✅ accept prop
     const config = {
       filename,
       ...presets[selected],
-      frames: playbackFrames  // ✅ now valid
+      frames: playbackFrames  // Pass the playback frames to the export function
     };
-    window.api.exportMotion(config).then(() =>
-      alert(`Exported ${config.filename}.${config.format} for ${selected}`)
-    );
+
+    if (config.format === 'fbx') {
+      // Trigger the FBX export for DAZ preset
+      const outputPath = `${config.filename}.fbx`;
+      exportFBXToFile(config.frames, outputPath);  // Pass frames and output file path
+      alert(`Exported ${config.filename}.fbx for ${selected}`);
+    } else {
+      // Handle other formats like BVH if needed
+      alert(`Exported ${config.filename}.${config.format} for ${selected}`);
+    }
   };
 
   return (
