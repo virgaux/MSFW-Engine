@@ -1,0 +1,10 @@
+node_modules/
+output/
+bin/
+*.zip
+*.exe
+*.bat
+*.ps1
+*.nsh
+*_Final/
+*_Installer_Ready/

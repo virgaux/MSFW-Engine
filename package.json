@@ -1,0 +1,28 @@
+{
+  "name": "msfw-engine",
+  "version": "1.0.0",
+  "description": "MSFW Engine - Phase 1 Bundle",
+  "main": "main.js",
+  "scripts": {
+    "start": "concurrently \"npm run react-start\" \"npm run electron\"",
+    "react-start": "cd src && npm start",
+    "electron": "wait-on tcp:3000 && electron .",
+    "build": "cd src && npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.mimeflow.msfwengine",
+    "productName": "MSFW Engine",
+    "files": ["**/*"],
+    "win": { "target": "nsis" }
+  },
+  "dependencies": {
+    "electron": "^25.3.1",
+    "concurrently": "^8.2.0",
+    "wait-on": "^7.0.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.6.0"
+  }
+}
