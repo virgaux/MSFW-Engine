@@ -6,6 +6,7 @@ import ResourceControlPanel from './components/ResourceControlPanel';
 import DiagnosticsPanel from './components/DiagnosticsPanel';
 import PluginManagerPanel from './components/PluginManagerPanel';
 import ExportPanel from './components/ExportPanel';
+import { applyBounce } from './helpers/bounceProcessor';
 
 function App() {
     const [motionData, setMotionData] = useState(null);
@@ -15,7 +16,8 @@ function App() {
         if (window.api && window.api.poseListener) {
             window.api.poseListener((data) => {
                 console.log('New pose data from OpenPose:', data.filename);
-                setMotionData(data.keypoints);
+                const bounced = applyBounce(data.keypoints);
+                setMotionData(bounced);
             });
         }
     }, []);
