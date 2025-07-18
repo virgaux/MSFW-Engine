@@ -1,0 +1,1 @@
+installer/PowerShell-7.5.2-win-x64.msi filter=lfs diff=lfs merge=lfs -text
