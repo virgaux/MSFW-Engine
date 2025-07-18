@@ -28,8 +28,8 @@ function App() {
             <MotionDropZone onFileDrop={(file) => console.log('Video file dropped:', file)} />
             <MotionViewer data={motionData} />
             <BounceControlPanel onSave={(config) => {
-                setBounceConfig(config);
-                updateSpringConfig(config);
+            setBounceConfig(config);
+            updateSpringConfig(config); // this updates the physics live
             }} />
             <ExportPanel />
             <ResourceControlPanel />

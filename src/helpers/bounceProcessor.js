@@ -1,7 +1,9 @@
 let springConfig = {
-  gravity: 2.5,
-  stiffness: 0.15,
-  damping: 0.9,
+  zones: {
+    breast: { gravity: 2.5, stiffness: 0.15, damping: 0.9 },
+    butt: { gravity: 2.2, stiffness: 0.12, damping: 0.85 },
+    pelvis: { gravity: 2.0, stiffness: 0.2, damping: 0.8 }
+  },
   enabledZones: {
     breast: true,
     butt: true,
@@ -13,6 +15,10 @@ export function updateSpringConfig(newConfig) {
   springConfig = {
     ...springConfig,
     ...newConfig,
+    zones: {
+      ...springConfig.zones,
+      ...(newConfig.zones || {})
+    },
     enabledZones: {
       ...springConfig.enabledZones,
       ...(newConfig.enabledZones || {})
@@ -22,7 +28,7 @@ export function updateSpringConfig(newConfig) {
 }
 
 const ZONE_TO_INDEX = {
-  breast: [16, 17], // right, left ears (demo only)
+  breast: [16, 17],
   pelvis: [8],
   butt: [11, 14]
 };
@@ -35,6 +41,7 @@ export function applyBounce(keypoints) {
 
   for (const [zone, indexes] of Object.entries(ZONE_TO_INDEX)) {
     if (!springConfig.enabledZones[zone]) continue;
+    const { gravity, stiffness, damping } = springConfig.zones[zone];
 
     for (const i of indexes) {
       const idx = i * 3;
@@ -53,8 +60,8 @@ export function applyBounce(keypoints) {
       const dx = x - state.position.x;
       const dy = y - state.position.y;
 
-      state.velocity.x = (state.velocity.x + dx * springConfig.stiffness) * springConfig.damping;
-      state.velocity.y = (state.velocity.y + dy * springConfig.stiffness + springConfig.gravity) * springConfig.damping;
+      state.velocity.x = (state.velocity.x + dx * stiffness) * damping;
+      state.velocity.y = (state.velocity.y + dy * stiffness + gravity) * damping;
 
       state.position.x += state.velocity.x;
       state.position.y += state.velocity.y;
