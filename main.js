@@ -3,12 +3,13 @@ const { app, BrowserWindow } = require('electron');
 const { runOpenPose } = require('./src/backend/openposeWrapper');
 const { watchKeypoints } = require('./src/backend/poseDataWatcher');
 const { loadBounceConfig } = require('./src/helpers/bounceTagger');
-const { exportFBXToFile } = require('./src/backend/exporters/fbxExporter');
+const { exportMotionData } = require('./src/backend/exporters/exporter');  // New consolidated exporter
+
 
 const { ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { exportBVHToFile } = require('./src/backend/exporters/bvhExporter');
+
 
 function createWindow () {
   const win = new BrowserWindow({
@@ -69,15 +70,8 @@ ipcMain.handle('export-motion', async (event, config) => {
     }
   }
 
-  if (config.format === 'bvh') {
-    exportBVHToFile(frameData, outputPath, 30);
-  } else if (config.format === 'fbx') {
-    exportFBXToFile(frameData, outputPath);
-  } else {
-    const note = `# Unknown export format: ${config.format}`;
-    fs.writeFileSync(outputPath, note, 'utf-8');
-  }
-
+  // ✅ Use the new consolidated exporter function
+  exportMotionData(frameData, outputPath, config.format);
 
   // ✅ Optional: Open output folder after export
   require('child_process').exec(`start "" "${exportDir}"`);

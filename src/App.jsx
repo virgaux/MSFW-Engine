@@ -2,15 +2,11 @@ import React, { useState, useEffect } from 'react';
 import MotionDropZone from './components/MotionDropZone';
 import MotionViewer from './components/MotionViewer';
 import BounceControlPanel from './components/BounceControlPanel';
-import ResourceControlPanel from './components/ResourceControlPanel';
-import DiagnosticsPanel from './components/DiagnosticsPanel';
-import PluginManagerPanel from './components/PluginManagerPanel';
 import ExportPanel from './components/ExportPanel';
 import AnimationControls from './components/AnimationControls';
-import SnapshotViewerPanel from './components/SnapshotViewerPanel';
-
 import { applyBounce, updateSpringConfig } from './helpers/bounceProcessor';
 import { useAnimationPlayer } from './hooks/useAnimationPlayer';
+import { exportMotionData } from './exporter';  // Import the combined export function
 
 function App() {
   const [mode, setMode] = useState('live'); // "live" or "playback"
@@ -42,6 +38,13 @@ function App() {
     ? currentFrame ? applyBounce(currentFrame) : null
     : liveFrame;
 
+  // Export logic
+  const handleExport = () => {
+    const exportFormat = 'fbx';  // Dynamic based on user selection ('fbx' or 'bvh')
+    const outputPath = `./output/${exportFormat}_${new Date().toISOString()}.${exportFormat}`;  // Dynamic filename
+    exportMotionData(activeFrame, outputPath, exportFormat);  // Call the unified export function
+  };
+
   return (
     <div style={{ display: 'grid', gap: '1em', padding: '1em' }}>
       <h1 style={{ color: 'white' }}>MSFW Engine Alpha</h1>
@@ -66,7 +69,7 @@ function App() {
       </div>
 
       <MotionDropZone onFileDrop={(file) => console.log('Video file dropped:', file)} />
-      <MotionViewer data={activeFrame} />
+      <MotionViewer keypoints={activeFrame} /> {/* Pass keypoints to MotionViewer */}
 
       {mode === 'playback' && (
         <AnimationControls
@@ -85,13 +88,12 @@ function App() {
           setBounceConfig(config);
           updateSpringConfig(config);
         }}
-      />
+      /> {/* Updated BounceControlPanel usage */}
 
-      <ExportPanel playbackFrames={yourAnimationData} />
-      <ResourceControlPanel />
-      <DiagnosticsPanel />
-      <PluginManagerPanel />
-      <SnapshotViewerPanel />
+      {/* Export Button */}
+      <button onClick={handleExport}>Export Motion Data</button>
+
+      <ExportPanel playbackFrames={activeFrame} />
     </div>
   );
 }

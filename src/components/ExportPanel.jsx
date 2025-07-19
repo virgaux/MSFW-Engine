@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-const { exportFBXToFile } = require('./fbxExporter');  // Import FBX exporter
-const { exportBVHToFile } = require('./bvhExporter');  // Import BVH exporter
+import { exportMotionData } from './exporter';  // Use the new unified export function
+
 
 const presets = {
   Blender: { format: 'bvh', skeleton: 'standard_human' },
@@ -13,22 +13,21 @@ export default function ExportPanel({ playbackFrames }) {
   const [filename, setFilename] = useState('motion_export');
 
   const handleExport = () => {
-    const config = {
-      filename,
-      ...presets[selected],
-      frames: playbackFrames
-    };
-
-    if (config.format === 'fbx') {
-      const outputPath = `${config.filename}.fbx`;
-      exportFBXToFile(config.frames, outputPath);  // Trigger FBX export
-      alert(`Exported ${config.filename}.fbx for ${selected}`);
-    } else if (config.format === 'bvh') {
-      const outputPath = `${config.filename}.bvh`;
-      exportBVHToFile(config.frames, outputPath);  // Trigger BVH export
-      alert(`Exported ${config.filename}.bvh for ${selected}`);
-    }
+  const config = {
+    filename,
+    ...presets[selected],
+    frames: playbackFrames
   };
+
+  const outputPath = `${config.filename}.${config.format}`;
+
+  if (config.format === 'fbx' || config.format === 'bvh') {
+    // Use the consolidated export function
+    exportMotionData(config.frames, outputPath, config.format);
+    alert(`Exported ${config.filename}.${config.format} for ${selected}`);
+  }
+};
+
 
   return (
     <div style={{ backgroundColor: '#1a1a1a', color: 'white', padding: '1em' }}>

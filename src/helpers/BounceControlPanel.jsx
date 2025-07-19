@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { saveBounceConfig } from '../helpers/bounceTagger';
+import { saveBounceConfig, loadBounceConfig } from '../helpers/bounceTagger';
 
 const PRESETS = {
   Realistic: {
@@ -25,7 +25,7 @@ const PRESETS = {
   }
 };
 
-function BounceControlPanel({ onSave }) {
+export default function BounceControlPanel({ onSave }) {
   const [bounceConfig, setBounceConfig] = useState({
     zones: {
       breast: { gravity: 2.5, stiffness: 0.15, damping: 0.9 },
@@ -40,11 +40,9 @@ function BounceControlPanel({ onSave }) {
   });
 
   useEffect(() => {
-    if (window.api?.loadBounceConfig) {
-      window.api.loadBounceConfig().then(config => {
-        if (config) setBounceConfig(config);
-      });
-    }
+    loadBounceConfig().then(config => {
+      if (config) setBounceConfig(config);
+    });
   }, []);
 
   const handleZoneChange = (zone, field, value) => {
@@ -86,7 +84,7 @@ function BounceControlPanel({ onSave }) {
 
   return (
     <div style={{ background: '#222', color: 'white', padding: '1em', borderRadius: '10px' }}>
-      <h2>Bounce Settings</h2>
+      <h2>Bounce & Gravity Control</h2>
 
       {['breast', 'butt', 'pelvis'].map(zone => (
         <div key={zone} style={{ marginBottom: '1em' }}>
@@ -142,5 +140,3 @@ function BounceControlPanel({ onSave }) {
     </div>
   );
 }
-
-export default BounceControlPanel;
