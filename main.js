@@ -5,7 +5,10 @@ const { watchKeypoints } = require('./src/backend/poseDataWatcher');
 const { loadBounceConfig } = require('./src/helpers/bounceTagger');
 const { exportFBXToFile } = require('./src/backend/exporters/fbxExporter');
 
+const { ipcMain } = require('electron');
+const fs = require('fs');
 const path = require('path');
+const { exportBVHToFile } = require('./src/backend/exporters/bvhExporter');
 
 function createWindow () {
   const win = new BrowserWindow({
@@ -45,11 +48,6 @@ app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
 
-
-const { ipcMain } = require('electron');
-const fs = require('fs');
-const path = require('path');
-const { exportBVHToFile } = require('./src/backend/exporters/bvhExporter');
 
 ipcMain.handle('export-motion', async (event, config) => {
   const exportDir = path.join(__dirname, 'output', 'exports');

@@ -6,6 +6,7 @@ dist/
 *.zip
 *.nsh
 *.log
+*.txt
 
 # Installer & Scripts
 *.exe

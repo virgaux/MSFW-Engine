@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-const { exportFBXToFile } = require('./fbxExporter');  // Import the FBX export function
+const { exportFBXToFile } = require('./fbxExporter');  // Import FBX exporter
+const { exportBVHToFile } = require('./bvhExporter');  // Import BVH exporter
 
 const presets = {
   Blender: { format: 'bvh', skeleton: 'standard_human' },
@@ -15,17 +16,17 @@ export default function ExportPanel({ playbackFrames }) {
     const config = {
       filename,
       ...presets[selected],
-      frames: playbackFrames  // Pass the playback frames to the export function
+      frames: playbackFrames
     };
 
     if (config.format === 'fbx') {
-      // Trigger the FBX export for DAZ preset
       const outputPath = `${config.filename}.fbx`;
-      exportFBXToFile(config.frames, outputPath);  // Pass frames and output file path
+      exportFBXToFile(config.frames, outputPath);  // Trigger FBX export
       alert(`Exported ${config.filename}.fbx for ${selected}`);
-    } else {
-      // Handle other formats like BVH if needed
-      alert(`Exported ${config.filename}.${config.format} for ${selected}`);
+    } else if (config.format === 'bvh') {
+      const outputPath = `${config.filename}.bvh`;
+      exportBVHToFile(config.frames, outputPath);  // Trigger BVH export
+      alert(`Exported ${config.filename}.bvh for ${selected}`);
     }
   };
 
