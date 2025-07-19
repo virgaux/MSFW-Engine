@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { FBXExporter } = require('three/examples/jsm/exporters/FBXExporter.js');
+const { GLTFExporter } = require('./assets/three/examples/jsm/exporters/GLTFExporter.js');
 const { Scene, Object3D } = require('three');
 
 // Euler Angle Calculation (Using Your Method)
@@ -86,9 +86,9 @@ function exportBVHToFile(frameData, outputPath, fps = 30) {
   console.log('BVH export successful:', outputPath);
 }
 
-// FBX Export Functionality
-function exportMotionData(frameData, outputPath, format = 'fbx') {
-  if (format === 'fbx') {
+// GLTF Export Functionality (new)
+function exportMotionData(frameData, outputPath, format = 'glTF') {
+  if (format === 'glTF') {
     // Create a Three.js scene
     const scene = new Scene();
     const skeleton = new Object3D();
@@ -103,19 +103,25 @@ function exportMotionData(frameData, outputPath, format = 'fbx') {
       skeleton.add(object);
     });
 
-    // Export to FBX format using FBXExporter
-    const exporter = new FBXExporter();
-    const fbxData = exporter.parse(scene);
+    // Export to GLTF format using GLTFExporter
+    const exporter = new GLTFExporter();
+    
+    // Export as binary (GLB) or JSON (GLTF)
+    exporter.parse(scene, function (result) {
+      const output = JSON.stringify(result, null, 2);
 
-    // Write the FBX data to the output file
-    fs.writeFileSync(outputPath, fbxData);
-    console.log('FBX export successful:', outputPath);
+      // Write the GLTF data to the output file (for GLTF or GLB)
+      fs.writeFileSync(outputPath, output);
+      console.log('GLTF export successful:', outputPath);
+    }, {
+      binary: true,  // If true, export as GLB (binary), false for GLTF (JSON)
+      forceIndices: true
+    });
   } else if (format === 'bvh') {
-    // BVH Export Logic (using provided code)
+    // If exporting BVH, use the existing BVH logic
     exportBVHToFile(frameData, outputPath);
   } else {
     console.error('Unsupported export format:', format);
   }
 }
-
 module.exports = { exportMotionData, exportBVHToFile };
