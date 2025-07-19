@@ -12,7 +12,10 @@
   "build": {
     "appId": "com.mimeflow.msfwengine",
     "productName": "MSFW Engine",
-    "files": ["**/*"],
+    "files": [
+      "**/*",
+      "src/assets/three/examples/jsm/exporters/FBXExporter.js"
+    ],
     "directories": {
       "buildResources": "installer"
     },
