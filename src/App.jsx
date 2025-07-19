@@ -24,31 +24,33 @@ function App() {
     totalFrames
   } = useAnimationPlayer(mode === 'playback' ? fps : 0);
 
-  // Live mode listener
+  // Live mode listener (when in "live" mode)
   useEffect(() => {
     if (mode === 'live' && window.api?.poseListener) {
       window.api.poseListener((data) => {
-        const bounced = applyBounce(data.keypoints);
-        setLiveFrame(bounced);
+        const bounced = applyBounce(data.keypoints); // Apply bounce to keypoints
+        setLiveFrame(bounced); // Set live frame data
       });
     }
   }, [mode]);
 
+  // Determine which frame to use based on mode
   const activeFrame = mode === 'playback'
     ? currentFrame ? applyBounce(currentFrame) : null
     : liveFrame;
 
-  // Export logic
+  // Export logic (handles both FBX and BVH exports)
   const handleExport = () => {
-    const exportFormat = 'fbx';  // Dynamic based on user selection ('fbx' or 'bvh')
-    const outputPath = `./output/${exportFormat}_${new Date().toISOString()}.${exportFormat}`;  // Dynamic filename
-    exportMotionData(activeFrame, outputPath, exportFormat);  // Call the unified export function
+    const exportFormat = 'fbx';  // Dynamically set to 'fbx' or 'bvh'
+    const outputPath = `./output/${exportFormat}_${new Date().toISOString()}.${exportFormat}`; // Dynamic output path
+    exportMotionData(activeFrame, outputPath, exportFormat); // Call the new combined export function
   };
 
   return (
     <div style={{ display: 'grid', gap: '1em', padding: '1em' }}>
       <h1 style={{ color: 'white' }}>MSFW Engine Alpha</h1>
 
+      {/* Mode Toggle (Live/Playback) */}
       <div style={{ marginBottom: '1em' }}>
         <label style={{ color: 'white' }}>
           <input
@@ -68,9 +70,13 @@ function App() {
         </label>
       </div>
 
+      {/* Motion Data File Drop */}
       <MotionDropZone onFileDrop={(file) => console.log('Video file dropped:', file)} />
-      <MotionViewer keypoints={activeFrame} /> {/* Pass keypoints to MotionViewer */}
+      
+      {/* MotionViewer Component (Displays the motion based on the current keypoints) */}
+      <MotionViewer keypoints={activeFrame} modelPath="path/to/your/daz_model.fbx" /> {/* Pass keypoints and model path */}
 
+      {/* Playback controls */}
       {mode === 'playback' && (
         <AnimationControls
           isPlaying={isPlaying}
@@ -83,16 +89,18 @@ function App() {
         />
       )}
 
+      {/* Bounce Control Panel */}
       <BounceControlPanel
         onSave={(config) => {
           setBounceConfig(config);
           updateSpringConfig(config);
         }}
-      /> {/* Updated BounceControlPanel usage */}
+      />
 
       {/* Export Button */}
       <button onClick={handleExport}>Export Motion Data</button>
 
+      {/* Export Panel */}
       <ExportPanel playbackFrames={activeFrame} />
     </div>
   );
