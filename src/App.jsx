@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+// App.jsx
+import "./App.css";
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import VideoInputPanel from './components/VideoInputPanel';
 import MotionViewer from './components/MotionViewer';
 import BounceControlPanel from './components/BounceControlPanel';
@@ -13,7 +15,7 @@ const INITIAL_APP_STATE = {
   isLoading: false,
   error: null,
   modelLoaded: false,
-  modelPath: "" // Start blank to force user to choose if not set
+  modelPath: ""
 };
 const INITIAL_PROCESSING_STATE = {
   isProcessing: false,
@@ -38,6 +40,13 @@ function App() {
   const [processingState, setProcessingState] = useState(INITIAL_PROCESSING_STATE);
   const [videoState, setVideoState] = useState(INITIAL_VIDEO_STATE);
 
+  const [displayMode, setDisplayMode] = useState('skin');
+
+  // New states for dynamic clothing management
+  const [detectedClothingNames, setDetectedClothingNames] = useState([]); // List of clothing names from the loaded FBX
+  const [clothingVisibility, setClothingVisibility] = useState({}); // Visibility state for each detected item
+
+
   const {
     currentFrame,
     isPlaying,
@@ -48,7 +57,20 @@ function App() {
     setFrames
   } = useAnimationPlayer(mode === 'playback' ? fps : 0);
 
-  // 👇 On app start: Load saved model path if available
+  // Callback to receive clothing names from MotionViewer
+  const handleClothingMeshesLoaded = useCallback((names) => {
+    setDetectedClothingNames(names);
+    // Initialize or update visibility for newly detected clothing
+    setClothingVisibility(prev => {
+      const newVisibility = {};
+      names.forEach(name => {
+        newVisibility[name] = prev[name] !== false; // Keep previous state if exists, otherwise default to true
+      });
+      return newVisibility;
+    });
+  }, []);
+
+
   useEffect(() => {
     window.api.loadSavedModelPath?.().then((savedPath) => {
       if (savedPath && savedPath !== appState.modelPath) {
@@ -58,18 +80,15 @@ function App() {
         }));
       }
     });
-    // eslint-disable-next-line
   }, []);
 
-  // Memoized active frame calculation
   const activeFrame = useMemo(() => {
     return mode === 'playback'
       ? currentFrame ? applyBounce(currentFrame) : null
       : liveFrame;
   }, [mode, currentFrame, liveFrame]);
 
-  // Error handling with timeout
-  const handleError = (error, timeout = 5000) => {
+  const handleError = useCallback((error, timeout = 5000) => {
     console.error('Application error:', error);
     setAppState(prev => ({
       ...prev,
@@ -79,9 +98,8 @@ function App() {
     setTimeout(() => {
       setAppState(prev => ({ ...prev, error: null }));
     }, timeout);
-  };
+  }, []);
 
-  // Cleanup resources on unmount
   useEffect(() => {
     return () => {
       if (videoState.url) {
@@ -93,7 +111,6 @@ function App() {
     };
   }, [videoState.url, videoState.processingTimeout]);
 
-  // Model validation (calls backend via IPC) - skip if no modelPath set
   useEffect(() => {
     if (!appState.modelPath) return;
     const validateModel = async () => {
@@ -108,9 +125,8 @@ function App() {
       }
     };
     validateModel();
-  }, [appState.modelPath]);
+  }, [appState.modelPath, handleError]);
 
-  // Live mode pose listener (calls backend via IPC)
   useEffect(() => {
     let cleanup = null;
     if (mode === 'live' && window.api?.poseListener) {
@@ -124,9 +140,8 @@ function App() {
       });
     }
     return () => cleanup?.();
-  }, [mode]);
+  }, [mode, handleError]);
 
-  // Video processing handler
   const handleVideoProcess = async (videoFile) => {
     setProcessingState({ isProcessing: true, progress: 0, error: null });
     const timeout = setTimeout(() => {
@@ -147,7 +162,7 @@ function App() {
       clearTimeout(timeout);
       setFrames(frames);
       setMode('playback');
-      setProcessingState(prev => ({ ...prev, progress: 100, isProcessing: false }));
+      setProcessingState(prev => ({ prev, progress: 100, isProcessing: false }));
       window.api.showNotification({
         title: 'Processing Complete',
         body: `Analyzed ${frames.length} frames successfully`
@@ -159,7 +174,6 @@ function App() {
     }
   };
 
-  // Video load handler
   const handleVideoLoad = ({ file, url, meta }) => {
     if (videoState.url) {
       URL.revokeObjectURL(videoState.url);
@@ -172,7 +186,6 @@ function App() {
     handleVideoProcess(file);
   };
 
-  // Export handler (calls backend via IPC)
   const handleExport = async () => {
     if (!activeFrame) {
       handleError(new Error('No motion data to export'));
@@ -199,26 +212,36 @@ function App() {
     }
   };
 
-  // Choose DAZ model file - show dialog, set path, persist
   const handleChooseModel = async () => {
     const filePath = await window.api.chooseModelFile();
+    console.log("App.jsx - handleChooseModel: Received filePath from Electron:", filePath); // ADD THIS LINE
     if (filePath) {
-      setAppState(prev => ({
-        ...prev,
-        modelPath: filePath,
-        modelLoaded: false  // will trigger validation effect
-      }));
-      window.api.saveModelPath(filePath); // Save for future launches
+        setAppState(prev => ({
+            ...prev,
+            modelPath: filePath,
+            modelLoaded: false
+        }));
+       await window.api.saveModelPath(filePath);
+        setDetectedClothingNames([]);
+        setClothingVisibility({});
     }
+};
+
+  const handleDisplayModeChange = (event) => {
+    setDisplayMode(event.target.value);
+  };
+
+  // Handler for individual clothing visibility
+  const handleClothingToggle = (meshName) => {
+    setClothingVisibility(prev => ({
+      ...prev,
+      [meshName]: !prev[meshName] // Toggle visibility for this item
+    }));
   };
 
   return (
     <div style={{ display: 'grid', gap: '1em', padding: '1em' }}>
-      <h1 style={{ color: 'white' }}>MSFW Engine Alpha</h1>
-      <button onClick={handleChooseModel}>
-        Choose DAZ Model (.fbx)
-      </button>
-      {/* User-friendly warning if no model selected */}
+      <h1 style={{ color: 'Black' }}>MSFW Engine Alpha</h1>
       {!appState.modelPath && (
         <div style={{
           color: 'orange',
@@ -229,7 +252,6 @@ function App() {
           Please select a DAZ model FBX file to continue.
         </div>
       )}
-      {/* Error Message */}
       {appState.error && (
         <div style={{
           color: 'red',
@@ -246,7 +268,6 @@ function App() {
           </button>
         </div>
       )}
-      {/* Loading Overlay */}
       {(appState.isLoading || processingState.isProcessing) && (
         <div style={{
           position: 'fixed',
@@ -267,27 +288,6 @@ function App() {
           </div>
         </div>
       )}
-      {/* Mode Toggle */}
-      <div style={{ marginBottom: '1em' }}>
-        <label style={{ color: 'white' }}>
-          <input
-            type="radio"
-            value="live"
-            checked={mode === 'live'}
-            onChange={() => setMode('live')}
-            disabled={processingState.isProcessing}
-          /> Live Mode
-        </label>
-        <label style={{ color: 'white', marginLeft: '1em' }}>
-          <input
-            type="radio"
-            value="playback"
-            checked={mode === 'playback'}
-            onChange={() => setMode('playback')}
-            disabled={processingState.isProcessing}
-          /> Playback Mode
-        </label>
-      </div>
       <VideoInputPanel
         onVideoLoad={handleVideoLoad}
         onError={handleError}
@@ -306,10 +306,72 @@ function App() {
           <p>Resolution: {videoState.metadata.width}x{videoState.metadata.height}</p>
         </div>
       )}
+      <div style={{ marginBottom: '1em' }}>
+        Animation Mode:
+        <label style={{ color: 'black' }}>
+          <input
+            type="radio"
+            value="live"
+            checked={mode === 'live'}
+            onChange={() => setMode('live')}
+            disabled={processingState.isProcessing}
+          /> Live Mode
+        </label>
+        <label style={{ color: 'black', marginLeft: '1em' }}>
+          <input
+            type="radio"
+            value="playback"
+            checked={mode === 'playback'}
+            onChange={() => setMode('playback')}
+            disabled={processingState.isProcessing}
+          /> Playback Mode
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '1em' }}>
+        <label htmlFor="displayModeSelect" style={{ color: 'black' }}>Display Mode: </label>
+        <select id="displayModeSelect" value={displayMode} onChange={handleDisplayModeChange} style={{ marginLeft: '0.5em' }}>
+          <option value="skin">With Skin</option>
+          <option value="gray">Gray Color Only</option>
+          <option value="gray_with_bones">Gray Color with Bones</option>
+        </select>
+      </div>
+
+      <button onClick={handleChooseModel} className="button">
+        <div className="button-outer">
+          <div className="button-inner">
+            <span>Choose DAZ Model (.fbx)</span>
+          </div>
+        </div>
+      </button>
+
+      {/* Dynamic Clothing Visibility Controls */}
+      {appState.modelLoaded && detectedClothingNames.length > 0 && ( // Only show if model loaded and clothing detected
+        <div style={{ border: '1px solid #ccc', padding: '1em', borderRadius: '4px', background: '#f9f9f9' }}>
+          <h4 style={{ margin: '0 0 0.5em 0', color: 'black' }}>Clothing Visibility</h4>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+            {detectedClothingNames.map(meshName => (
+              <label key={meshName} style={{ color: 'black', whiteSpace: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  checked={clothingVisibility[meshName]}
+                  onChange={() => handleClothingToggle(meshName)}
+                />
+                {/* Friendly name display: remove _numbersShape and add spaces for readability */}
+                {meshName.replace(/(_\d+Shape)?$/, '').replace(/([A-Z])/g, ' $1').trim()}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       <MotionViewer
         keypoints={activeFrame}
         modelPath={appState.modelPath}
         onError={handleError}
+        displayMode={displayMode}
+        clothingVisibility={clothingVisibility}
+        onClothingMeshesLoaded={handleClothingMeshesLoaded} ///* Pass the new callback */
       />
       {mode === 'playback' && (
         <AnimationControls
