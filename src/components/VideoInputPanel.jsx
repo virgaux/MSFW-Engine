@@ -4,9 +4,9 @@ import MotionViewer from './MotionViewer';
 import BounceControlPanel from './BounceControlPanel';
 import ExportPanel from './ExportPanel';
 import AnimationControls from './AnimationControls';
-import { applyBounce, updateSpringConfig } from '../../backend/helpers/bounceProcessor';
-import { useAnimationPlayer } from '../../backend/hooks/useAnimationPlayer';
-import { exportMotionData } from '../../backend/exporters/exporter'; // Consolidated exporter
+import { applyBounce, updateSpringConfig } from '../utils/bounceProcessor';
+import { useAnimationPlayer } from '../hooks/useAnimationPlayer';
+
 
 function App() {
   // Core states
@@ -128,7 +128,7 @@ function App() {
       const exportFormat = 'fbx';
       const outputPath = `./output/motion_${timestamp}.${exportFormat}`;
       
-      await exportMotionData(activeFrame, outputPath, exportFormat);
+      await window.api.exportMotion(activeFrame, outputPath, exportFormat); // Use IPC API
       
       window.api.showNotification({
         title: 'Export Successful',
@@ -141,6 +141,7 @@ function App() {
       setAppState(prev => ({ ...prev, isLoading: false }));
     }
   };
+
 
   return (
     <div style={{ display: 'grid', gap: '1em', padding: '1em' }}>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { exportMotionData } from '../../backend/exporters/exporter';  // Use the new unified export function
 
-
+// ⚠️ DO NOT import any backend/exporter code here!
+// All backend logic must be accessed via window.api (preload IPC).
 
 const presets = {
   Blender: { format: 'bvh', skeleton: 'standard_human' },
@@ -9,26 +9,43 @@ const presets = {
   Unity: { format: 'bvh', skeleton: 'humanoid' }
 };
 
-export default function ExportPanel({ playbackFrames }) {
+export default function ExportPanel({ playbackFrames, onError }) {
   const [selected, setSelected] = useState('Blender');
   const [filename, setFilename] = useState('motion_export');
 
-  const handleExport = () => {
-  const config = {
-    filename,
-    ...presets[selected],
-    frames: playbackFrames
+  const handleExport = async () => {
+    try {
+      const config = {
+        filename,
+        ...presets[selected],
+        frames: playbackFrames
+      };
+      const outputPath = `${config.filename}.${config.format}`;
+
+      if (!playbackFrames || playbackFrames.length === 0) {
+        alert('No frames to export!');
+        return;
+      }
+
+      // Call backend export function via IPC bridge
+      await window.api.exportMotion(config.frames, outputPath, config.format);
+
+      alert(`Exported ${config.filename}.${config.format} for ${selected}`);
+    } catch (err) {
+      if (onError) onError(err);
+      alert('Export failed: ' + err.message);
+    }
   };
 
-  const outputPath = `${config.filename}.${config.format}`;
-
-  if (config.format === 'fbx' || config.format === 'bvh') {
-    // Use the consolidated export function
-    exportMotionData(config.frames, outputPath, config.format);
-    alert(`Exported ${config.filename}.${config.format} for ${selected}`);
-  }
-};
-
+  const handleSavePlayback = async () => {
+    try {
+      await window.api.savePlayback(playbackFrames);
+      alert('Playback saved.');
+    } catch (err) {
+      if (onError) onError(err);
+      alert('Failed to save playback: ' + err.message);
+    }
+  };
 
   return (
     <div style={{ backgroundColor: '#1a1a1a', color: 'white', padding: '1em' }}>
@@ -43,7 +60,7 @@ export default function ExportPanel({ playbackFrames }) {
       </select>
       <br/><br/>
       <button onClick={handleExport}>Export</button>
-      <button onClick={() => window.api.savePlayback(playbackFrames)}>
+      <button onClick={handleSavePlayback}>
         Save Playback
       </button>
     </div>

@@ -1,12 +1,9 @@
-
-const { app, BrowserWindow } = require('electron');
+const { ipcMain, app, BrowserWindow,dialog } = require('electron');
 const { runOpenPose } = require('./backend/openposeWrapper');
 const { watchKeypoints } = require('./backend/poseDataWatcher');
 const { loadBounceConfig } = require('./backend/helpers/bounceTagger');
-const { exportMotionData } = require('./exporterbackend/exporters/exporter');  // New consolidated exporter
+const { exportMotionData } = require('./backend/exporters/exporter');  // New consolidated exporter
 
-
-const { ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -29,6 +26,19 @@ function createWindow () {
 
 // Detect if we're in development (npm start) or production (installer/offline)
 
+const settingsPath = path.join(app.getPath('userData'), 'msfw_settings.json');
+
+// Settings helpers
+function getSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+  } catch (e) {
+    return {};
+  }
+}
+function setSettings(newSettings) {
+  fs.writeFileSync(settingsPath, JSON.stringify(newSettings, null, 2), 'utf-8');
+}
 
 app.whenReady().then(() => {
   createWindow();
@@ -127,4 +137,46 @@ ipcMain.handle('save-playback', async (event, data) => {
     console.error('[MSFW] Error saving playback:', err);
     return false;
   }
+});
+
+ipcMain.handle('check-file', async (event, filePath) => {
+  // You can use fs.existsSync or similar
+  const fs = require('fs');
+  return fs.existsSync(filePath);
+});
+
+ipcMain.handle('load-pose-sequence', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const playbackPath = path.join(__dirname, 'playback.json');
+  try {
+    const data = fs.readFileSync(playbackPath, 'utf-8');
+    return JSON.parse(data);
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('choose-model-file', async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Select DAZ Model (FBX)",
+    filters: [{ name: 'FBX Files', extensions: ['fbx'] }],
+    properties: ['openFile']
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+// Save DAZ model path to settings
+ipcMain.handle('save-model-path', async (event, filePath) => {
+  const settings = getSettings();
+  settings.modelPath = filePath;
+  setSettings(settings);
+  return true;
+});
+
+// Load saved DAZ model path
+ipcMain.handle('load-saved-model-path', async () => {
+  const settings = getSettings();
+  return settings.modelPath || null;
 });
