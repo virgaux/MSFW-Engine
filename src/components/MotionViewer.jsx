@@ -71,28 +71,28 @@ export default function MotionViewer({ keypoints, modelPath }) {
     mountRef.current.appendChild(renderer.domElement);
 
     // 🚩 NEW: Load the model from base64 if path is set
-    if (modelPath) {
-      const base64 = window.api.readModelFile(modelPath);
-      if (base64) {
-        // Convert base64 to binary
-        const binaryStr = atob(base64);
-        const len = binaryStr.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) bytes[i] = binaryStr.charCodeAt(i);
+    (async () => {
+      if (modelPath && window.api.readModelFile) {
+        const base64 = await window.api.readModelFile(modelPath);
+        if (base64) {
+          const binaryStr = atob(base64);
+          const len = binaryStr.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) bytes[i] = binaryStr.charCodeAt(i);
 
-        // Make a Blob and Object URL for the FBXLoader
-        const blob = new Blob([bytes], { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
+          const blob = new Blob([bytes], { type: 'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
 
-        const loader = new FBXLoader();
-        loader.load(url, (object) => {
-          scene.add(object);
-          URL.revokeObjectURL(url); // clean up after load
-        }, undefined, (err) => {
-          console.error("Failed to load FBX model:", err);
-        });
+          const loader = new FBXLoader();
+          loader.load(url, (object) => {
+            scene.add(object);
+            URL.revokeObjectURL(url);
+          }, undefined, (err) => {
+            console.error("Failed to load FBX model:", err);
+          });
+        }
       }
-    }
+    })();
 
     // JOINTS
     const jointMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff });

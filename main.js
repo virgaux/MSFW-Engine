@@ -180,3 +180,12 @@ ipcMain.handle('load-saved-model-path', async () => {
   const settings = getSettings();
   return settings.modelPath || null;
 });
+
+ipcMain.handle('read-model-file', async (event, filePath) => {
+  try {
+    const buffer = fs.readFileSync(filePath);
+    return buffer.toString('base64');
+  } catch (e) {
+    return null;
+  }
+});

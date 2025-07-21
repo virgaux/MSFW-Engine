@@ -26,9 +26,6 @@ contextBridge.exposeInMainWorld('api', {
   saveModelPath: (filePath) => ipcRenderer.invoke('save-model-path', filePath),
   loadSavedModelPath: () => ipcRenderer.invoke('load-saved-model-path'),
   showNotification: (options) => ipcRenderer.invoke('show-notification', options),
-  readModelFile: (filePath) => {
-    // Return as base64 for easy transfer
-    const buffer = fs.readFileSync(filePath);
-    return buffer.toString('base64');
-  }
+  readModelFile: (filePath) => ipcRenderer.invoke('read-model-file', filePath)
+
 });
