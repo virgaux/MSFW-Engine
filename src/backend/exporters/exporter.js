@@ -1,5 +1,5 @@
 const { Scene, Object3D } = require('three');
-const { GLTFExporter } = require('three/examples/jsm/exporters/GLTFExporter');
+const { GLTFExporter } = require('three-stdlib');
 const fs = require('fs');
 const path = require('path');
 
@@ -123,21 +123,28 @@ async function exportGLTF(frameData, outputPath) {
             });
 
             const exporter = new GLTFExporter();
-            exporter.parse(
-                scene,
-                (result) => {
-                    const output = JSON.stringify(result, null, 2);
-                    fs.writeFileSync(outputPath, output);
-                    resolve();
-                },
-                (error) => {
-                    reject(new Error(`GLTF export failed: ${error}`));
-                },
-                {
-                    binary: true,
-                    forceIndices: true
-                }
-            );
+                exporter.parse(
+                    scene,
+                    (result) => {
+                        if (Buffer.isBuffer(result) || result instanceof ArrayBuffer) {
+                            // For .glb binary export
+                            fs.writeFileSync(outputPath, Buffer.from(result));
+                        } else {
+                            // For .gltf JSON export
+                            const output = JSON.stringify(result, null, 2);
+                            fs.writeFileSync(outputPath, output);
+                        }
+                        resolve();
+                    },
+                    (error) => {
+                        reject(new Error(`GLTF export failed: ${error}`));
+                    },
+                    {
+                        binary: true, // if you want .glb, keep this true; for .gltf (JSON), set to false
+                        forceIndices: true
+                    }
+                );
+
         } catch (error) {
             reject(error);
         }

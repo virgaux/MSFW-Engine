@@ -14,7 +14,7 @@
     "productName": "MSFW Engine",
     "files": [
       "**/*",
-      "src/assets/three/examples/jsm/exporters/FBXExporter.js"
+      "node_modules/three/examples/jsm/exporters/**"
     ],
     "directories": {
       "buildResources": "installer"
@@ -37,15 +37,14 @@
   },
   "dependencies": {
     "concurrently": "^9.2.0",
-    "wait-on": "^8.0.3",
     "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "three": "^0.178.0",
-    "react-dom": "^18.2.0"
+    "three-stdlib": "^2.36.0",
+    "wait-on": "^8.0.3"
   },
   "devDependencies": {
     "electron": "36.2.0",
     "electron-builder": "^26.0.12"
   }
-  
 }
-
