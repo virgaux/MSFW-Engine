@@ -1,9 +1,9 @@
 
 const { app, BrowserWindow } = require('electron');
-const { runOpenPose } = require('./src/backend/openposeWrapper');
-const { watchKeypoints } = require('./src/backend/poseDataWatcher');
-const { loadBounceConfig } = require('./src/helpers/bounceTagger');
-const { exportMotionData } = require('./src/backend/exporters/exporter');  // New consolidated exporter
+const { runOpenPose } = require('./backend/openposeWrapper');
+const { watchKeypoints } = require('./backend/poseDataWatcher');
+const { loadBounceConfig } = require('./backend/helpers/bounceTagger');
+const { exportMotionData } = require('./exporterbackend/exporters/exporter');  // New consolidated exporter
 
 
 const { ipcMain } = require('electron');
