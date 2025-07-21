@@ -23,8 +23,8 @@ contextBridge.exposeInMainWorld('api', {
         return ipcRenderer.invoke('process-video', filePath);
     },
     chooseModelFile: () => ipcRenderer.invoke('choose-model-file'),
-    saveModelPath: (filePath) => ipcRenderer.invoke('save-model-path', filePath),
-    loadSavedModelPath: () => ipcRenderer.invoke('load-saved-model-path'), // <--- ADDED THIS CRITICAL LINE
+    saveModelPath: (modelPath) => ipcRenderer.invoke('save-model-path', modelPath),
+    loadSavedModelPath: () => ipcRenderer.invoke('load-saved-model-path'),
     showNotification: (options) => ipcRenderer.send('show-notification', options), // <--- Changed to .send (more typical for notifications)
     readModelFile: (filePath) => ipcRenderer.invoke('read-model-file', filePath)
 

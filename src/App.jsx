@@ -213,19 +213,19 @@ function App() {
   };
 
   const handleChooseModel = async () => {
-    const filePath = await window.api.chooseModelFile();
-    console.log("App.jsx - handleChooseModel: Received filePath from Electron:", filePath); // ADD THIS LINE
-    if (filePath) {
-        setAppState(prev => ({
-            ...prev,
-            modelPath: filePath,
-            modelLoaded: false
-        }));
-       await window.api.saveModelPath(filePath);
-        setDetectedClothingNames([]);
-        setClothingVisibility({});
-    }
-};
+      const filePath = await window.api.chooseModelFile();
+      console.log("App.jsx - handleChooseModel: Received filePath from Electron:", filePath); // ADD THIS LINE
+      if (filePath) {
+          setAppState(prev => ({
+              ...prev,
+              modelPath: filePath,
+              modelLoaded: false
+          }));
+          window.api.saveModelPath(filePath);
+          setDetectedClothingNames([]);
+          setClothingVisibility({});
+      }
+  };
 
   const handleDisplayModeChange = (event) => {
     setDisplayMode(event.target.value);
@@ -365,14 +365,32 @@ function App() {
         </div>
       )}
 
-      <MotionViewer
-        keypoints={activeFrame}
-        modelPath={appState.modelPath}
-        onError={handleError}
-        displayMode={displayMode}
-        clothingVisibility={clothingVisibility}
-        onClothingMeshesLoaded={handleClothingMeshesLoaded} ///* Pass the new callback */
-      />
+          {/* Render MotionViewer ONLY if modelPath exists */}
+            {appState.modelPath && ( // <-- Add this condition
+                <MotionViewer
+                    keypoints={activeFrame}
+                    modelPath={appState.modelPath}
+                    onError={handleError}
+                    displayMode={displayMode}
+                    clothingVisibility={clothingVisibility}
+                    onClothingMeshesLoaded={handleClothingMeshesLoaded}
+                />
+            )}
+
+            {!appState.modelPath && ( // Optionally show a placeholder while modelPath is loading/not chosen
+                <div style={{
+                    width: '1000px', // Match MotionViewer's width
+                    height: '800px', // Match MotionViewer's height
+                    border: '1px solid #333',
+                    backgroundColor: '#f0f0f0',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    color: '#666'
+                }}>
+                    Awaiting DAZ Model Selection...
+                </div>
+            )}
       {mode === 'playback' && (
         <AnimationControls
           isPlaying={isPlaying}
