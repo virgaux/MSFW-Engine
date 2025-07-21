@@ -19,9 +19,16 @@ function createWindow () {
       preload: path.join(__dirname, 'preload.js')
     }
   });
-
-  win.loadURL('http://localhost:3000');
+  const isDev = !app.isPackaged; // true in dev, false when built
+  if (isDev) {
+    win.loadURL('http://localhost:3000');
+  } else {
+    win.loadFile(path.join(__dirname, 'build', 'index.html'));
+  }
 }
+
+// Detect if we're in development (npm start) or production (installer/offline)
+
 
 app.whenReady().then(() => {
   createWindow();

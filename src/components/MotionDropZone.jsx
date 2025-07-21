@@ -1,34 +1,33 @@
 import React, { useState } from 'react';
-import { processMotionData } from '../helpers/motionProcessor';
 
-export default function MotionDropZone({ onFileProcessed }) {
+export default function MotionDropZone({ onFileDrop, disabled }) {
   const [dragging, setDragging] = useState(false);
-  const [message, setMessage] = useState('Drag and drop motion files here');
+  const [message, setMessage] = useState('Drag and drop a video file here');
 
   const handleDrop = (e) => {
     e.preventDefault();
     setDragging(false);
+    if (disabled) return;  // Prevent drop if processing is in progress
     const file = e.dataTransfer.files[0];
     if (file) {
+      // Only proceed if it's a video file
+      if (!file.type.startsWith('video/')) {
+        setMessage('Please drop a valid video file');
+        return;
+      }
       setMessage('Processing...');
-      processMotionData(file)
-        .then(data => {
-          setMessage('File processed successfully!');
-          onFileProcessed(data);
-        })
-        .catch(error => {
-          setMessage('Error processing file');
-        });
+      // Hand off the file to the parent for processing
+      onFileDrop(file);
     }
   };
 
   const handleDragOver = (e) => {
     e.preventDefault();
-    setDragging(true);
+    if (!disabled) setDragging(true);
   };
 
   const handleDragLeave = () => {
-    setDragging(false);
+    if (!disabled) setDragging(false);
   };
 
   return (
@@ -43,6 +42,7 @@ export default function MotionDropZone({ onFileProcessed }) {
         background: dragging ? '#222' : '#111',
         color: 'white',
         textAlign: 'center',
+        opacity: disabled ? 0.5 : 1  // Visually indicate if dropping is disabled
       }}
     >
       <p>{message}</p>

@@ -4,9 +4,10 @@ import MotionViewer from './components/MotionViewer';
 import BounceControlPanel from './components/BounceControlPanel';
 import ExportPanel from './components/ExportPanel';
 import AnimationControls from './components/AnimationControls';
-import { applyBounce, updateSpringConfig } from './helpers/bounceProcessor';
-import { useAnimationPlayer } from './hooks/useAnimationPlayer';
-import { exportMotionData } from './exporter';
+import { applyBounce, updateSpringConfig } from './backend/helpers/bounceProcessor';
+import { useAnimationPlayer } from '../backend/hooks/useAnimationPlayer';
+import { exportMotionData } from '../backend/exporters/exporter';
+
 
 // Constants
 const INITIAL_APP_STATE = {
@@ -32,6 +33,7 @@ const INITIAL_VIDEO_STATE = {
 const PROCESSING_TIMEOUT = 300000; // 5 minutes
 
 function App() {
+   return <div style={{ color: "black", background: "#fff", padding: "2em" }}>Hello, world!</div>;
   // Core states with initial values
   const [mode, setMode] = useState('live');
   const [bounceConfig, setBounceConfig] = useState(null);

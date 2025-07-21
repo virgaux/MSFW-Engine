@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import MotionDropZone from './components/MotionDropZone';
-import MotionViewer from './components/MotionViewer';
-import BounceControlPanel from './components/BounceControlPanel';
-import ExportPanel from './components/ExportPanel';
-import AnimationControls from './components/AnimationControls';
-import { applyBounce, updateSpringConfig } from './helpers/bounceProcessor';
-import { useAnimationPlayer } from './hooks/useAnimationPlayer';
-import { exportMotionData } from './exporter';
+import MotionDropZone from './MotionDropZone';
+import MotionViewer from './MotionViewer';
+import BounceControlPanel from './BounceControlPanel';
+import ExportPanel from './ExportPanel';
+import AnimationControls from './AnimationControls';
+import { applyBounce, updateSpringConfig } from '../../backend/helpers/bounceProcessor';
+import { useAnimationPlayer } from '../../backend/hooks/useAnimationPlayer';
+import { exportMotionData } from '../../backend/exporters/exporter'; // Consolidated exporter
 
 function App() {
   // Core states

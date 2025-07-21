@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { exportMotionData } from './exporter';  // Use the new unified export function
+import { exportMotionData } from '../../backend/exporters/exporter';  // Use the new unified export function
+
 
 
 const presets = {
