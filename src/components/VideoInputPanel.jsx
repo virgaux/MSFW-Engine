@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import VideoInputPanel from './components/VideoInputPanel';
+import React, { useState, useEffect } from 'react';
+import MotionDropZone from './components/MotionDropZone';
 import MotionViewer from './components/MotionViewer';
 import BounceControlPanel from './components/BounceControlPanel';
 import ExportPanel from './components/ExportPanel';
@@ -8,42 +8,29 @@ import { applyBounce, updateSpringConfig } from './helpers/bounceProcessor';
 import { useAnimationPlayer } from './hooks/useAnimationPlayer';
 import { exportMotionData } from './exporter';
 
-// Constants
-const INITIAL_APP_STATE = {
-  isLoading: false,
-  error: null,
-  modelLoaded: false,
-  modelPath: process.env.DAZ_MODEL_PATH || "path/to/your/daz_model.fbx"
-};
-
-const INITIAL_PROCESSING_STATE = {
-  isProcessing: false,
-  progress: 0,
-  error: null
-};
-
-const INITIAL_VIDEO_STATE = {
-  source: null,
-  metadata: null,
-  url: null,
-  processingTimeout: null
-};
-
-const PROCESSING_TIMEOUT = 300000; // 5 minutes
-
 function App() {
-  // Core states with initial values
+  // Core states
   const [mode, setMode] = useState('live');
   const [bounceConfig, setBounceConfig] = useState(null);
   const [liveFrame, setLiveFrame] = useState(null);
   const [fps, setFps] = useState(30);
 
-  // Use constants for initial states
-  const [appState, setAppState] = useState(INITIAL_APP_STATE);
-  const [processingState, setProcessingState] = useState(INITIAL_PROCESSING_STATE);
-  const [videoState, setVideoState] = useState(INITIAL_VIDEO_STATE);
+  // Application state management
+  const [appState, setAppState] = useState({
+    isLoading: false,
+    error: null,
+    modelLoaded: false,
+    modelPath: "path/to/your/daz_model.fbx"
+  });
 
-  // Custom hook for animation playback
+  // Processing state management
+  const [processingState, setProcessingState] = useState({
+    isProcessing: false,
+    progress: 0,
+    error: null
+  });
+
+  // Playback data from custom hook
   const {
     currentFrame,
     isPlaying,
@@ -54,41 +41,15 @@ function App() {
     setFrames
   } = useAnimationPlayer(mode === 'playback' ? fps : 0);
 
-  // Memoized active frame calculation
-  const activeFrame = useMemo(() => {
-    return mode === 'playback'
-      ? currentFrame ? applyBounce(currentFrame) : null
-      : liveFrame;
-  }, [mode, currentFrame, liveFrame]);
-
-  // Error handling with timeout
-  const handleError = (error, timeout = 5000) => {
+  // Error handling
+  const handleError = (error) => {
     console.error('Application error:', error);
     setAppState(prev => ({
       ...prev,
       error: error.message,
       isLoading: false
     }));
-
-    // Auto-dismiss error after timeout
-    setTimeout(() => {
-      setAppState(prev => ({ ...prev, error: null }));
-    }, timeout);
   };
-
-  // Cleanup resources on unmount
-  useEffect(() => {
-    return () => {
-      // Cleanup video resources
-      if (videoState.url) {
-        URL.revokeObjectURL(videoState.url);
-      }
-      // Clear any processing timeouts
-      if (videoState.processingTimeout) {
-        clearTimeout(videoState.processingTimeout);
-      }
-    };
-  }, [videoState.url, videoState.processingTimeout]);
 
   // Model validation
   useEffect(() => {
@@ -107,12 +68,10 @@ function App() {
     validateModel();
   }, [appState.modelPath]);
 
-  // Live mode pose listener with cleanup
+  // Live mode pose listener
   useEffect(() => {
-    let cleanup = null;
-    
     if (mode === 'live' && window.api?.poseListener) {
-      cleanup = window.api.poseListener((data) => {
+      const cleanup = window.api.poseListener((data) => {
         try {
           const bounced = applyBounce(data.keypoints);
           setLiveFrame(bounced);
@@ -120,47 +79,28 @@ function App() {
           handleError(err);
         }
       });
-    }
 
-    return () => cleanup?.();
+      return cleanup; // Cleanup listener on unmount
+    }
   }, [mode]);
 
-  // Video processing handler with timeout and cancellation
+  // Video processing handler
   const handleVideoProcess = async (videoFile) => {
     setProcessingState({ isProcessing: true, progress: 0, error: null });
-    
-    // Set processing timeout
-    const timeout = setTimeout(() => {
-      handleError(new Error('Video processing timeout. Please try a shorter video.'));
-      setProcessingState(prev => ({ ...prev, isProcessing: false }));
-    }, PROCESSING_TIMEOUT);
-
     try {
       if (!videoFile?.type?.startsWith('video/')) {
         throw new Error('Invalid file type. Please upload a video file.');
       }
 
-      window.api.showNotification({
-        title: 'Processing Video',
-        body: 'Starting motion capture analysis...'
-      });
-
       const frames = await window.api.processVideo(videoFile.path, (progress) => {
         setProcessingState(prev => ({ ...prev, progress }));
       });
 
-      clearTimeout(timeout);
       setFrames(frames);
       setMode('playback');
-      setProcessingState(prev => ({ ...prev, progress: 100, isProcessing: false }));
-
-      window.api.showNotification({
-        title: 'Processing Complete',
-        body: `Analyzed ${frames.length} frames successfully`
-      });
+      setProcessingState(prev => ({ ...prev, progress: 100 }));
 
     } catch (err) {
-      clearTimeout(timeout);
       handleError(err);
       setProcessingState(prev => ({ 
         ...prev, 
@@ -170,31 +110,15 @@ function App() {
     }
   };
 
-  // Video load handler
-  const handleVideoLoad = ({ file, url, meta }) => {
-    // Cleanup previous video resources
-    if (videoState.url) {
-      URL.revokeObjectURL(videoState.url);
-    }
+  // Determine active frame
+  const activeFrame = mode === 'playback'
+    ? currentFrame ? applyBounce(currentFrame) : null
+    : liveFrame;
 
-    setVideoState({
-      source: file,
-      metadata: meta,
-      url: url
-    });
-
-    handleVideoProcess(file);
-  };
-
-  // Export handler with validation
+  // Export handler
   const handleExport = async () => {
     if (!activeFrame) {
       handleError(new Error('No motion data to export'));
-      return;
-    }
-
-    if (!appState.modelLoaded) {
-      handleError(new Error('DAZ model not loaded'));
       return;
     }
 
@@ -270,7 +194,6 @@ function App() {
             value="live"
             checked={mode === 'live'}
             onChange={() => setMode('live')}
-            disabled={processingState.isProcessing}
           /> Live Mode
         </label>
         <label style={{ color: 'white', marginLeft: '1em' }}>
@@ -279,30 +202,14 @@ function App() {
             value="playback"
             checked={mode === 'playback'}
             onChange={() => setMode('playback')}
-            disabled={processingState.isProcessing}
           /> Playback Mode
         </label>
       </div>
 
-      <VideoInputPanel 
-        onVideoLoad={handleVideoLoad}
-        onError={handleError}
+      <MotionDropZone 
+        onFileDrop={handleVideoProcess}
         disabled={appState.isLoading || processingState.isProcessing}
       />
-      
-      {videoState.metadata && mode === 'playback' && (
-        <div style={{
-          padding: '1em',
-          backgroundColor: '#333',
-          borderRadius: '4px',
-          color: 'white'
-        }}>
-          <h4 style={{ margin: '0 0 0.5em 0' }}>Source Video</h4>
-          <p>Duration: {videoState.metadata.duration.toFixed(2)}s</p>
-          <p>Frames: {totalFrames}</p>
-          <p>Resolution: {videoState.metadata.width}x{videoState.metadata.height}</p>
-        </div>
-      )}
       
       <MotionViewer 
         keypoints={activeFrame} 
@@ -319,7 +226,7 @@ function App() {
           setFps={setFps}
           frameIndex={frameIndex}
           totalFrames={totalFrames}
-          disabled={!appState.modelLoaded || processingState.isProcessing}
+          disabled={!appState.modelLoaded}
         />
       )}
 
@@ -328,13 +235,13 @@ function App() {
           setBounceConfig(config);
           updateSpringConfig(config);
         }}
-        disabled={!activeFrame || processingState.isProcessing}
+        disabled={!activeFrame}
       />
 
       <ExportPanel 
         playbackFrames={activeFrame}
         onExport={handleExport}
-        disabled={!activeFrame || appState.isLoading || processingState.isProcessing}
+        disabled={!activeFrame || appState.isLoading}
         onError={handleError}
       />
     </div>
