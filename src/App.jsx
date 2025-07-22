@@ -148,17 +148,21 @@ function App() {
       handleError(new Error('Video processing timeout. Please try a shorter video.'));
       setProcessingState(prev => ({ ...prev, isProcessing: false }));
     }, PROCESSING_TIMEOUT);
+    
     try {
       if (!videoFile?.type?.startsWith('video/')) {
         throw new Error('Invalid file type. Please upload a video file.');
       }
+      
       window.api.showNotification({
         title: 'Processing Video',
         body: 'Starting motion capture analysis...'
       });
-      const frames = await window.api.processVideo(videoFile.path, (progress) => {
+
+      const frames = await window.api.processVideo(videoFile.path, startTime, endTime, (progress) => {
         setProcessingState(prev => ({ ...prev, progress }));
       });
+
       clearTimeout(timeout);
       setFrames(frames);
       setMode('playback');
