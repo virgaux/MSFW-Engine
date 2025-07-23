@@ -1,7 +1,7 @@
 // preload.js
 console.log('------------------- Preload script started! -------------------');
 const { contextBridge, ipcRenderer } = require('electron');
-const path = require('path'); // CORRECTED: Import path module directly
+// REMOVED: const path = require('path'); // This line is removed
 
 contextBridge.exposeInMainWorld('api', {
     selectVideoFile: () => ipcRenderer.invoke('select-video-file-dialog'),
@@ -19,12 +19,13 @@ contextBridge.exposeInMainWorld('api', {
     loadSavedModelPath: () => ipcRenderer.invoke('load-saved-model-path'),
     readModelFile: (filePath) => ipcRenderer.invoke('read-model-file', filePath),
     readLocalFile: (filePath) => ipcRenderer.invoke('read-local-file', filePath),
-    // Expose specific path methods
-    path: {
-        basename: (p) => path.basename(p) // This will now correctly use the 'path' module
-    },
+    // NEW: Expose path functions via IPC
+    getPathBasename: (filePath) => ipcRenderer.invoke('get-path-basename', filePath),
+    getPathDirname: (filePath) => ipcRenderer.invoke('get-path-dirname', filePath),
+    getPathJoin: (...args) => ipcRenderer.invoke('get-path-join', ...args),
 
-    // Listeners for status updates - CORRECTED to return unsubscription functions
+    // Expose specific path...
+    // REMOVED: The `path` object exposure as it relied on direct require('path')
     onVideoProcessingStatus: (callback) => {
         const handler = (event, data) => callback(data);
         ipcRenderer.on('video-processing-status', handler);
@@ -55,4 +56,3 @@ contextBridge.exposeInMainWorld('api', {
     },
 });
 console.log('------------------- window.api exposed! -------------------');
-// console.log('window.api content:', Object.keys(window.api)); // Uncomment for inspection if needed

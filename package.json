@@ -21,7 +21,7 @@
       "**/*.node",
       "node_modules/ffmpeg-static/**/*",
       "node_modules/ffprobe-static/**/*",
-      "openpose_binaries/**/*"
+      "openpose/**/*"
     ],
     "directories": {
       "buildResources": "installer"

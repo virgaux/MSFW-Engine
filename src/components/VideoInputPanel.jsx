@@ -21,10 +21,29 @@ const VideoInputPanel = () => {
     const [videoProcessingProgress, setVideoProcessingProgress] = useState(0); 
     const [transcodeProgress, setTranscodeProgress] = useState(0); // NEW: For playback transcoding progress
 
-    const basename = window.api?.path?.basename;
+    // NEW: State to store the video basename
+    const [videoBasename, setVideoBasename] = useState('');
 
     // Use useRef for mutable value that doesn't trigger re-renders, for the object URL cleanup
     const currentVideoObjectURLRef = useRef(''); 
+
+    // Effect to fetch and set the video basename
+    useEffect(() => {
+        const updateBasename = async () => {
+            if (videoPath && window.api?.getPathBasename) {
+                try {
+                    const name = await window.api.getPathBasename(videoPath);
+                    setVideoBasename(name);
+                } catch (error) {
+                    console.error('Error fetching basename:', error);
+                    setVideoBasename('Error getting name');
+                }
+            } else {
+                setVideoBasename('');
+            }
+        };
+        updateBasename();
+    }, [videoPath]); // Rerun when videoPath changes
 
     useEffect(() => {
         // Set up IPC listeners
@@ -128,8 +147,8 @@ const VideoInputPanel = () => {
             const filePath = await window.api.selectVideoFile();
             if (filePath) {
                 setVideoPath(filePath); // Store the original path
-                setStatusMessage(`Selected video: ${basename ? basename(filePath) : filePath}`); 
-                
+                setStatusMessage(`Selected video: ${videoBasename || filePath}`); // Use videoBasename
+
                 // Get video metadata (duration)
                 const result = await window.api.getVideoMetadata(filePath);
                 if (result.success) {
@@ -163,6 +182,12 @@ const VideoInputPanel = () => {
             }
         } catch (error) {
             console.error('Error selecting video file:', error);
+            setVideoPath(''); // Clear path on error
+            setVideoPathForPlayback(''); // Clear playback path on error
+            setVideoObjectURL(''); // Clear URL on error
+            setVideoDuration(0);
+            setStartTime(0);
+            setEndTime(0);
             setStatusMessage(`Error getting file path: ${error.message}`);
         }
     };
@@ -303,7 +328,8 @@ const VideoInputPanel = () => {
                 <button onClick={handleFileSelect}>
                     <FontAwesomeIcon icon={faVideo} /> Select Video
                 </button>
-                {videoPath && <span className="selected-path">{basename ? basename(videoPath) : videoPath}</span>}
+                {/* Display videoBasename here */}
+                {videoPath && <span className="selected-path">Selected: {videoBasename || videoPath}</span>}
             </div>
 
             {videoObjectURL && (

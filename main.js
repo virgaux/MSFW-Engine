@@ -6,12 +6,10 @@ const { watchKeypoints } = require('./backend/poseDataWatcher');
 const { loadBounceConfig } = require('./backend/helpers/bounceTagger');
 const { exportMotionData } = require('./backend/exporters/exporter');
 
-// CORRECTED IMPORTS:
-// videoService exports getVideoMetadata and processVideoForOpenPose
-const { getVideoMetadata, processVideoForOpenPose } = require('./backend/videoService'); 
-// ffmpegHelper exports clipVideo and transcodeVideo
-const ffmpegHelper = require('./backend/helpers/ffmpegHelper'); 
 
+const { getVideoMetadata, processVideoForOpenPose } = require('./backend/videoService'); 
+const ffmpegHelper = require('./backend/helpers/ffmpegHelper'); 
+const { OpenPoseWrapper } = require('./backend/openposeWrapper');
 
 const fs = require('fs/promises');
 const path = require('path');
@@ -61,22 +59,77 @@ async function setSettings(newSettings) {
 // NEW: Define tempVideoDir for transcoded playback files
 const tempVideoDir = path.join(os.tmpdir(), 'msfw_temp_playback'); 
 
+// ADDED: Declare mainWindow and openPoseWrapper globally
+let mainWindow; // <--- ADDED
+let openPoseWrapper; // <--- ADDED
+
 function createWindow() {
-    const win = new BrowserWindow({
+    // CHANGED: Assign to global mainWindow instead of local 'win'
+    mainWindow = new BrowserWindow({ // <--- CHANGED
         width: 1200,
         height: 800,
+        minWidth: 800, // <--- ADDED: Good practice for responsive UI
+        minHeight: 600, // <--- ADDED: Good practice for responsive UI
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
-            nodeIntegration: true,
-            contextIsolation: true
+            // CHANGED: Corrected security settings for webPreferences
+            nodeIntegration: false, // <--- CHANGED: Set to false for security with contextIsolation
+            contextIsolation: true, // <--- CHANGED: Should be true for security
+            webSecurity: false // <--- ADDED: May be needed for local file access, consider hardening for production
+        },
+        title: "MSFW Engine" // <--- ADDED: Add a title to the window
+    });
+
+    // DETERMINE OPENPOSE PATH BASED ON ENVIRONMENT
+    let openposeBasePath;
+    if (app.isPackaged) {
+        openposeBasePath = path.join(process.resourcesPath, 'app.asar.unpacked', 'openpose');
+    } else {
+        openposeBasePath = path.join(__dirname, 'openpose');
+    }
+    console.log(`[Main Process] OpenPose base path: ${openposeBasePath}`);
+    console.log(path.join(getUserDataPath(), 'openpose_output_keypoints'))
+    openPoseWrapper = new OpenPoseWrapper({
+        openposePath: openposeBasePath,
+        userDataPath: getUserDataPath(), 
+        outputDir: path.join(getUserDataPath(), 'openpose_output_keypoints'), // Set default output path for OpenPose
+    }); // <--- ADDED
+
+    // ADDED: Set up listeners for OpenPoseWrapper events once and forward them to the renderer
+    openPoseWrapper.on('progress', (data) => {
+        if (mainWindow) mainWindow.webContents.send('openpose-status', { type: 'progress', data: data });
+    }); // <--- ADDED
+    openPoseWrapper.on('start', (message) => {
+        if (mainWindow) mainWindow.webContents.send('openpose-status', { type: 'start', data: message });
+    }); // <--- ADDED
+    openPoseWrapper.on('complete', (data) => {
+        if (mainWindow) mainWindow.webContents.send('openpose-status', { type: 'complete', data: data });
+    }); // <--- ADDED
+    openPoseWrapper.on('error', (error) => {
+        if (mainWindow) mainWindow.webContents.send('openpose-status', { type: 'error', data: error.message });
+    }); // <--- ADDED
+    openPoseWrapper.on('cancelled', (message) => {
+        if (mainWindow) mainWindow.webContents.send('openpose-status', { type: 'cancelled', data: message });
+    }); // <--- ADDED
+
+    // ADDED: Initialize OpenPoseWrapper to detect GPU etc. This should run once at startup.
+    openPoseWrapper.initialize().catch(err => {
+        console.error('[Main Process] OpenPoseWrapper initialization failed:', err.message);
+        if (mainWindow) {
+            mainWindow.webContents.send('app-notification', {
+                title: 'OpenPose Setup Error',
+                body: `OpenPose initialization failed: ${err.message}. Please check your OpenPose installation and ensure models are present.`,
+                severity: 'error'
+            });
         }
     });
+
     const isDev = !app.isPackaged;
     if (isDev) {
-        win.loadURL('http://localhost:3000');
-        win.webContents.openDevTools();
+        mainWindow.loadURL('http://localhost:3000'); // <--- CHANGED: Use mainWindow
+        mainWindow.webContents.openDevTools(); // <--- CHANGED: Use mainWindow
     } else {
-        win.loadFile(path.join(__dirname, 'build', 'index.html'));
+        mainWindow.loadFile(path.join(__dirname, 'build', 'index.html')); // <--- CHANGED: Use mainWindow
     }
 }
 
@@ -88,18 +141,6 @@ app.whenReady().then(async () => { // Made this async to await directory creatio
     await fs.mkdir(tempVideoDir, { recursive: true });
     console.log(`[Main Process] Playback temp directory created at: ${tempVideoDir}`);
 
-    // Register a custom protocol for local file access if webSecurity: false is not desired
-    // This example uses file:// directly for simplicity, but if you need a more robust
-    // solution for serving local files securely, you'd use something like:
-    /*
-    protocol.handle('app-video', (request) => {
-        const filePath = decodeURIComponent(request.url.replace(/^app-video:\/\//, ''));
-        return net.fetch(pathToFileURL(filePath).toString());
-    });
-    */
-
-    // The callback for watchKeypoints must be async if it contains awaits
-    // This watches the output directory for OpenPose and sends data to the renderer
     watchKeypoints(async (keypoints, filename) => {
         const win = BrowserWindow.getAllWindows()[0];
         if (win) {
@@ -128,6 +169,20 @@ app.on('window-all-closed', function () {
 
 
 // --- IPC Handlers ---
+
+// NEW: IPC handlers for path operations
+ipcMain.handle('get-path-basename', async (event, filePath) => {
+    return path.basename(filePath);
+});
+
+ipcMain.handle('get-path-dirname', async (event, filePath) => {
+    return path.dirname(filePath);
+});
+
+ipcMain.handle('get-path-join', async (event, ...args) => {
+    return path.join(...args);
+});
+
 
 ipcMain.handle('export-motion', async (event, config) => {
     const exportDir = path.join(getUserDataPath(), 'output', 'exports');
@@ -162,7 +217,8 @@ ipcMain.handle('export-motion', async (event, config) => {
 });
 
 ipcMain.handle('load-plugins', async () => {
-    const pluginDir = app.isPackaged ? path.join(process.resourcesPath, 'plugins') : './plugins';
+    // CHANGED: Corrected path for packaged app to explicitly unpack plugins
+    const pluginDir = app.isPackaged ? path.join(process.resourcesPath, 'app.asar.unpacked', 'plugins') : './plugins'; // <--- CHANGED
     const results = [];
 
     await fs.mkdir(pluginDir, { recursive: true });
@@ -318,9 +374,7 @@ ipcMain.handle('select-video-file-dialog', async () => {
 // Handler to get video metadata (duration)
 ipcMain.handle('get-video-metadata', async (event, videoPath) => {
     try {
-        const metadata = await getVideoMetadata(videoPath); // Use imported getVideoMetadata
-        // The playbackMimeType logic here is less critical now, as we'll transcode for playback.
-        // However, it's good to keep if you ever want to attempt native playback for other formats.
+        const metadata = await getVideoMetadata(videoPath); 
         const formatName = metadata.format?.format_name;
         const videoCodecName = metadata.streams?.[0]?.codec_name;
         let playbackMimeType = 'application/octet-stream'; 
@@ -353,19 +407,38 @@ ipcMain.handle('get-video-metadata', async (event, videoPath) => {
     }
 });
 
-ipcMain.handle('transcode-for-playback', async (event, originalVideoPath) => {
-    const outputFileName = `playback_temp_${Date.now()}.mp4`;
-    const outputPath = path.join(tempVideoDir, outputFileName); // tempVideoDir is now defined
-
+ipcMain.handle('transcode-for-playback', async (event, filePath) => {
+    const webContents = event.sender;
     try {
-        // Call the transcoding function from ffmpegHelper
-        await ffmpegHelper.transcodeVideo(originalVideoPath, outputPath, (progress) => {
-            // Optional: send progress back to renderer for UI updates
-            event.sender.send('transcode-playback-progress', { percent: progress.percent });
+        const tempDir = path.join(os.tmpdir(), 'msfw_temp_playback');
+        await fs.mkdir(tempDir, { recursive: true });
+        const tempFilePath = path.join(tempDir, `playback_temp_${Date.now()}.mp4`);
+
+        let lastProgress = 0;
+        await ffmpegHelper.transcodeVideo(filePath, tempFilePath, (progress) => {
+            const currentPercent = progress.percent || 0;
+            if (currentPercent - lastProgress >= 1 || currentPercent === 100) { // Update roughly every 1% or at 100%
+                webContents.send('transcode-playback-progress', { percent: currentPercent });
+                lastProgress = currentPercent;
+            }
         });
-        return { success: true, tempFilePath: outputPath };
+
+        // NEW CHECK: Verify file size after transcoding
+        const stats = await fs.stat(tempFilePath);
+        if (stats.size === 0) {
+            console.error(`[Main Process] Transcoded file ${tempFilePath} is empty!`);
+            // Clean up the empty file
+            await fs.unlink(tempFilePath); 
+            throw new Error('Transcoding completed, but the output file is empty.');
+        }
+
+        webContents.send('transcode-playback-progress', { percent: 100 }); // Ensure 100% is sent
+        console.log(`[Main Process] Transcoding for playback successfully created: ${tempFilePath} (${stats.size} bytes)`);
+
+        return { success: true, tempFilePath };
     } catch (error) {
-        console.error('Error transcoding for playback:', error);
+        console.error('[Main Process] Error during transcode-for-playback:', error);
+        webContents.send('transcode-playback-progress', { percent: 0 }); // Reset progress on error
         return { success: false, error: error.message };
     }
 });
@@ -384,6 +457,7 @@ ipcMain.handle('process-video', async (event, { filePath, startTime, endTime }) 
         console.log(`[Main Process] Calling videoService.processVideoForOpenPose for clipping.`);
         
         // This will now clip the video and return the path to the clipped file
+        // IMPORTANT: Ensure videoService.js creates the clipped file in a temp directory and returns its path
         const { outputPath: clippedVideoOutputPath } = await processVideoForOpenPose({ filePath, startTime, endTime }, (progress) => {
             webContents.send('video-processing-status', { type: 'clipping-progress', message: `Clipping: ${progress.percent.toFixed(1)}%`, progress });
         });
@@ -391,50 +465,23 @@ ipcMain.handle('process-video', async (event, { filePath, startTime, endTime }) 
         console.log(`[Main Process] Video clipped to: ${clippedVideoOutputPath}`);
         webContents.send('video-processing-status', { type: 'clipped', message: 'Video clipped successfully!' });
 
-        // 2. Run OpenPose on the clipped video
+        // 2. Run OpenPose on the clipped video using the globally available instance
         webContents.send('video-processing-status', { type: 'openpose-start', message: 'Starting OpenPose...' });
         
-        // Determine the OpenPose binary path robustly for both development and packaged app
-        // The `openpose_binaries` directory should contain `bin`, `models`, etc.
-        const openposeBaseDir = app.isPackaged
-            ? path.join(process.resourcesPath, 'app.asar.unpacked', 'openpose_binaries') // This is the base directory passed to OpenPoseWrapper
-            : path.join(__dirname, 'openpose_binaries'); // Assuming openpose_binaries is at the same level as main.js
-
-        const openPose = new OpenPoseWrapper({
-            openposePath: openposeBaseDir, // Pass the base directory
-            outputDir: path.join(getUserDataPath(), 'openpose_output_keypoints'), // Output keypoints to user data dir
-        });
-
-        // --- IMPORTANT: Initialize OpenPoseWrapper here ---
-        webContents.send('openpose-status', { type: 'initializing', message: 'Initializing OpenPose...' });
-        await openPose.initialize(); // Call initialize method
-        webContents.send('openpose-status', { type: 'initialized', data: { gpu: openPose.config.gpuMode, gpuInfo: openPose.gpuInfo } });
-
-        // Set up listeners for OpenPose events and forward them to the renderer
-        openPose.on('progress', ({ type, data }) => {
-            webContents.send('openpose-status', { type: 'progress', data });
-        });
-        openPose.on('complete', ({ code }) => {
-            webContents.send('openpose-status', { type: 'complete', data: { code } });
-        });
-        openPose.on('error', (error) => {
-            webContents.send('openpose-status', { type: 'error', data: error.message || 'Unknown OpenPose Error' });
-            console.error('[Main Process] OpenPose Error:', error);
-        });
-
         console.log(`[Main Process] Calling OpenPose on: ${clippedVideoOutputPath}`);
-        await openPose.runOpenPose(clippedVideoOutputPath, {
-            display: false,
-            renderPose: false,
-            // Additional OpenPose options if needed
+        // CHANGED: Call runOpenPose on the global openPoseWrapper instance
+        await openPoseWrapper.runOpenPose(clippedVideoOutputPath, { // <--- CHANGED
+            display: 0, // Ensure display is off unless explicitly needed
+            renderPose: 0, // Ensure rendering is off unless explicitly needed
+            // Additional OpenPose options if needed (e.g., face: true, hand: true)
         });
 
         // 3. Clean up temporary clipped video
         try {
-            // Note: processVideoForOpenPose in videoService.js creates the clipped file.
-            // It's main.js's responsibility to clean it up after OpenPose uses it.
-            await fs.unlink(clippedVideoOutputPath);
-            console.log(`[Main Process] Cleaned up temporary clipped video: ${clippedVideoOutputPath}`);
+            if (await fileExists(clippedVideoOutputPath)) { 
+                await fs.unlink(clippedVideoOutputPath);
+                console.log(`[Main Process] Cleaned up temporary clipped video: ${clippedVideoOutputPath}`); 
+            }
         } catch (cleanupError) {
             console.warn(`[Main Process] Failed to clean up temporary clipped video: ${cleanupError.message}`);
         }
@@ -465,9 +512,15 @@ ipcMain.on('show-notification', (event, options) => {
 ipcMain.handle('read-local-file', async (event, filePath) => {
     try {
         const data = await fs.readFile(filePath);
-        return data.buffer; // Return ArrayBuffer for Blob creation in renderer
+        // Using slice to get a detached ArrayBuffer, which is safer for renderer process
+        const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength); 
+        console.log(`[Main Process - read-local-file] Read ${arrayBuffer.byteLength} bytes from ${filePath}`);
+        if (arrayBuffer.byteLength === 0) {
+            console.warn(`[Main Process - read-local-file] Warning: File ${filePath} returned an empty buffer.`);
+        }
+        return arrayBuffer; // Return ArrayBuffer for Blob creation in renderer
     } catch (error) {
-        console.error('Failed to read local file:', error);
-        throw new Error('Failed to read local file: ' + error.message);
+        console.error(`[Main Process - read-local-file] Failed to read local file ${filePath}:`, error);
+        throw new Error(`Failed to read local file: ${error.message}`);
     }
 });
