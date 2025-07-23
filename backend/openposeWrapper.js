@@ -1,198 +1,209 @@
+// backend/helpers/openposeWrapper.js
 const { spawn } = require('child_process');
-const path = require('path');
-const fs = require('fs');
 const EventEmitter = require('events');
+const path = require('path');
+const fs = require('fs/promises'); // For path validation and directory creation
 
 class OpenPoseWrapper extends EventEmitter {
-  constructor(config = {}) {
-    super();
-    this.config = {
-      openposePath: config.openposePath || path.resolve(__dirname, '../../../bin/openpose-1.7.0-binaries-win64-gpu'),
-      outputDir: config.outputDir || path.resolve(__dirname, '../../../output/keypoints'),
-      modelPath: config.modelPath || 'BODY_25',
-      gpu: config.gpu || 'auto',
-      confidence: config.confidence || 0.6,
-      maxRetries: config.maxRetries || 3
-    };
-    
-    this.process = null;
-    this.initialized = false;
-    this.gpuInfo = null;
-  }
-
-  async validateInstallation() {
-    const exePath = path.join(this.config.openposePath, 'bin', 'OpenPoseDemo.exe');
-    const modelPath = path.join(this.config.openposePath, 'models');
-    
-    if (!fs.existsSync(exePath)) {
-      throw new Error(`OpenPose executable not found at: ${exePath}`);
+    constructor(config = {}) {
+        super();
+        this.config = {
+            openposePath: config.openposePath || './openpose_binaries', // Base directory for OpenPose
+            outputDir: config.outputDir || './output_keypoints', // Directory for OpenPose JSON output
+            // Default OpenPose parameters
+            modelPose: 'BODY_25', // 'BODY_25', 'COCO', 'MPI'
+            netResolution: '-1x368', // Adjust as needed, e.g., '656x368' or '-1x368'
+            display: 0, // 0 for no display, 1 for display
+            renderPose: 0, // 0 for no rendering, 1 for rendering (CPU)
+            face: false, // Include face keypoints
+            hand: false, // Include hand keypoints
+            processFps: 0, // 0 for original FPS, specify a number to limit
+            // Add more parameters as needed
+        };
+        this.process = null;
+        this.gpuInfo = 'Detecting...'; // Placeholder for GPU detection status
     }
 
-    if (!fs.existsSync(modelPath)) {
-      throw new Error(`OpenPose models not found at: ${modelPath}`);
-    }
-    
-    return true;
-  }
+    async initialize() {
+        // Ensure output directory exists
+        await fs.mkdir(this.config.outputDir, { recursive: true });
 
-  async detectGPU() {
-    try {
-      const nvidia = await this.checkNvidiaGPU();
-      if (nvidia) {
-        this.gpuInfo = { type: 'NVIDIA', ...nvidia };
-        return this.gpuInfo;
-      }
+        // Basic check for OpenPose executable existence
+        const openposeExecutable = process.platform === 'win32' ? 'OpenPoseDemo.exe' : 'openpose';
+        const executablePath = path.join(this.config.openposePath, 'bin', openposeExecutable);
 
-      const amd = await this.checkAMDGPU();
-      if (amd) {
-        this.gpuInfo = { type: 'AMD', ...amd };
-        return this.gpuInfo;
-      }
-
-      return null;
-    } catch (error) {
-      console.warn('GPU detection failed:', error);
-      return null;
-    }
-  }
-
-  async checkNvidiaGPU() {
-    return new Promise((resolve) => {
-      const nvidiaSmi = spawn('nvidia-smi', ['-L']);
-      let output = '';
-
-      nvidiaSmi.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      nvidiaSmi.on('close', (code) => {
-        if (code === 0 && output.toLowerCase().includes('gpu')) {
-          resolve({ available: true, info: output.trim() });
-        } else {
-          resolve(null);
-        }
-      });
-
-      nvidiaSmi.on('error', () => resolve(null));
-    });
-  }
-
-  async checkAMDGPU() {
-    // Simplified AMD detection - could be enhanced
-    return new Promise((resolve) => {
-      const dxdiag = spawn('dxdiag', ['/t', 'temp_dxdiag.txt']);
-      
-      dxdiag.on('close', async () => {
         try {
-          const data = await fs.promises.readFile('temp_dxdiag.txt', 'utf8');
-          const isAMD = data.includes('AMD') || data.includes('Radeon');
-          await fs.promises.unlink('temp_dxdiag.txt');
-          resolve(isAMD ? { available: true } : null);
-        } catch {
-          resolve(null);
+            await fs.access(executablePath, fs.constants.F_OK);
+            console.log(`[OpenPoseWrapper] OpenPose executable found at: ${executablePath}`);
+        } catch (error) {
+            console.error(`[OpenPoseWrapper] OpenPose executable NOT found at: ${executablePath}`);
+            throw new Error(`OpenPose executable not found. Please check the path: ${executablePath}`);
         }
-      });
 
-      dxdiag.on('error', () => resolve(null));
-    });
-  }
+        // Dummy run to detect GPU or check for CPU only mode
+        // This is a more robust way to check for GPU support than parsing initial logs
+        // This part can be resource-intensive, consider making it optional or cached.
+        this.emit('progress', { type: 'stdout', data: 'Detecting GPU info...' });
+        console.log('[OpenPoseWrapper] Attempting to detect GPU (this may take a moment)...');
+        try {
+            const gpuDetectArgs = [
+                '--num_gpu', '-1', // Try to auto-detect GPUs
+                '--no_display',
+                '--disable_multi_thread',
+                '--logging_level', '255', // Suppress most output
+                '--render_pose', '0',
+                '--process_real_time', // Process one frame and exit
+                '--image_dir', path.join(__dirname, '../../empty_folder_for_gpu_detect'), // Use a dummy empty folder
+                // Use a non-existent image directory to make it exit quickly if no GPU is found
+            ];
+             // Create a dummy empty folder for GPU detection to avoid errors
+            await fs.mkdir(path.join(__dirname, '../../empty_folder_for_gpu_detect'), { recursive: true });
 
-  async initialize() {
-    try {
-      await this.validateInstallation();
-      const gpu = await this.detectGPU();
-      
-      if (!gpu) {
-        console.warn('No GPU detected, falling back to CPU mode');
-        this.config.gpu = 'CPU';
-      } else {
-        this.config.gpu = gpu.type;
-      }
-      
-      this.initialized = true;
-      this.emit('initialized', { gpu: this.config.gpu, gpuInfo: this.gpuInfo });
-      return true;
-    } catch (error) {
-      this.emit('error', error);
-      throw error;
-    }
-  }
 
-  buildArguments(inputSource, options = {}) {
-    const args = [
-      '--model_pose', this.config.modelPath,
-      '--video', inputSource,
-      '--write_json', this.config.outputDir,
-      '--display', options.display ? '1' : '0',
-      '--render_pose', options.renderPose ? '1' : '0',
-      '--number_people_max', options.maxPeople || '1',
-      '--net_resolution', options.netResolution || '320x176'
-    ];
+            const gpuProcess = spawn(executablePath, gpuDetectArgs, { cwd: this.config.openposePath });
+            let gpuOutput = '';
+            let gpuError = '';
 
-    if (this.config.gpu === 'CPU') {
-      args.push('--disable_multi_thread');
-    }
+            gpuProcess.stdout.on('data', (data) => { gpuOutput += data.toString(); });
+            gpuProcess.stderr.on('data', (data) => { gpuError += data.toString(); });
 
-    return args;
-  }
+            await new Promise((resolve, reject) => {
+                gpuProcess.on('close', (code) => {
+                    if (code === 0 || code === 1) { // OpenPose often exits with 1 even on successful GPU check if no real input
+                        resolve();
+                    } else {
+                        reject(new Error(`GPU detection failed with code ${code}: ${gpuError}`));
+                    }
+                });
+                gpuProcess.on('error', (err) => reject(err));
+            });
 
-  attachEventHandlers() {
-    if (!this.process) return;
+            // Analyze output for GPU presence
+            if (gpuOutput.includes('Starting OpenPose')) {
+                // If OpenPose successfully started (even with dummy input), it means it found some config.
+                // Look for CUDA or CPU only messages
+                if (gpuOutput.includes('CUDA')) {
+                    this.config.gpuMode = true;
+                    this.gpuInfo = 'GPU (CUDA) detected.';
+                    if (gpuOutput.includes('No GPU found')) {
+                        // Sometimes CUDA is mentioned but no actual GPU found later
+                         this.config.gpuMode = false;
+                         this.gpuInfo = 'CPU only (No CUDA GPU found)';
+                         this.config.openposeArgs = ['--cpu_only']; // Force CPU only if no GPU
+                    }
+                } else if (gpuOutput.includes('CPU only mode') || gpuOutput.includes('No GPU detected')) {
+                    this.config.gpuMode = false;
+                    this.gpuInfo = 'CPU only (No CUDA GPU found)';
+                    this.config.openposeArgs = ['--cpu_only']; // Force CPU only if no GPU
+                } else {
+                    // Fallback if specific messages aren't caught
+                    this.config.gpuMode = true; // Assume GPU if no explicit CPU-only message
+                    this.gpuInfo = 'GPU (status unknown, check logs for details)';
+                }
+            } else if (gpuError.includes('CUDA_ERROR_NO_DEVICE')) {
+                this.config.gpuMode = false;
+                this.gpuInfo = 'CPU only (CUDA device not found)';
+                this.config.openposeArgs = ['--cpu_only']; // Force CPU only if no GPU
+            } else {
+                this.config.gpuMode = false;
+                this.gpuInfo = `CPU only (Unknown GPU detection error: ${gpuError.substring(0, 100)}...)`;
+                this.config.openposeArgs = ['--cpu_only']; // Force CPU only if no GPU
+            }
+            console.log(`[OpenPoseWrapper] GPU detection result: ${this.gpuInfo}`);
+            this.emit('progress', { type: 'stdout', data: `GPU detection complete: ${this.gpuInfo}` });
 
-    this.process.stdout.on('data', (data) => {
-      const output = data.toString();
-      this.emit('progress', { type: 'stdout', data: output });
-      
-      if (output.includes('Processing frame')) {
-        const match = output.match(/Processing frame (\d+)/);
-        if (match) {
-          this.emit('frame', parseInt(match[1]));
+             // Clean up dummy folder
+             await fs.rm(path.join(__dirname, '../../empty_folder_for_gpu_detect'), { recursive: true, force: true });
+
+        } catch (err) {
+            console.error('[OpenPoseWrapper] Error during GPU detection:', err.message);
+            this.config.gpuMode = false;
+            this.gpuInfo = `CPU only (Error during detection: ${err.message})`;
+            this.config.openposeArgs = ['--cpu_only']; // Force CPU only on error
+            this.emit('progress', { type: 'stderr', data: `Error during GPU detection: ${err.message}` });
         }
-      }
-    });
-
-    this.process.stderr.on('data', (data) => {
-      this.emit('progress', { type: 'stderr', data: data.toString() });
-    });
-
-    this.process.on('close', (code) => {
-      this.emit('complete', { code });
-      this.process = null;
-    });
-
-    this.process.on('error', (error) => {
-      this.emit('error', error);
-      this.cleanup();
-    });
-  }
-
-  async runOpenPose(inputSource, options = {}) {
-    if (!this.initialized) {
-      throw new Error('OpenPoseWrapper not initialized');
     }
 
-    try {
-      await fs.promises.mkdir(this.config.outputDir, { recursive: true });
 
-      const args = this.buildArguments(inputSource, options);
-      const exePath = path.join(this.config.openposePath, 'bin', 'OpenPoseDemo.exe');
-      
-      this.process = spawn(exePath, args, { cwd: this.config.openposePath });
-      this.attachEventHandlers();
-      
-      return this.process;
-    } catch (error) {
-      this.emit('error', error);
-      throw error;
-    }
-  }
+    async runOpenPose(videoInputPath, options = {}) {
+        if (this.process) {
+            this.emit('error', new Error('OpenPose is already running. Please wait or stop the current process.'));
+            return;
+        }
 
-  cleanup() {
-    if (this.process) {
-      this.process.kill();
-      this.process = null;
+        const args = [
+            '--video', videoInputPath,
+            '--write_json', this.config.outputDir,
+            '--render_pose', options.renderPose !== undefined ? options.renderPose : this.config.renderPose,
+            '--display', options.display !== undefined ? options.display : this.config.display,
+            '--model_pose', this.config.modelPose,
+            '--net_resolution', this.config.netResolution,
+            // Add other configurable options here
+            ...(this.config.face ? ['--face'] : []),
+            ...(this.config.hand ? ['--hand'] : []),
+            ...(this.config.processFps > 0 ? ['--process_fps', this.config.processFps] : []),
+            ...(this.config.openposeArgs || []), // Add CPU only or other args from initialization
+            // Add specific logging level for production to reduce stdout verbosity
+            '--logging_level', '3' // 0: All, 1: Trace, 2: Debug, 3: Info, 4: Warn, 5: Error, 6: Fatal, 255: No Logging
+        ];
+
+        // Filter out empty strings or undefined values from args array
+        const filteredArgs = args.filter(arg => arg !== '' && arg !== undefined);
+
+        const openposeExecutable = process.platform === 'win32' ? 'OpenPoseDemo.exe' : 'openpose';
+        const executablePath = path.join(this.config.openposePath, 'bin', openposeExecutable);
+
+        console.log(`[OpenPose] Spawning: ${executablePath} ${filteredArgs.join(' ')}`);
+
+        this.process = spawn(executablePath, filteredArgs, { cwd: this.config.openposePath });
+
+        let totalFrames = 0; // Will be determined from OpenPose output
+        let currentFrame = 0;
+
+        this.process.stdout.on('data', (data) => {
+            const output = data.toString();
+            this.emit('progress', { type: 'stdout', data: output });
+
+            // Example parsing for progress
+            const frameMatch = output.match(/Processed (\d+) of (\d+) frames/);
+            if (frameMatch) {
+                currentFrame = parseInt(frameMatch[1], 10);
+                totalFrames = parseInt(frameMatch[2], 10);
+                const percent = (currentFrame / totalFrames) * 100;
+                this.emit('progress', { type: 'frame-progress', data: { current: currentFrame, total: totalFrames, percent } });
+            }
+        });
+
+        this.process.stderr.on('data', (data) => {
+            const output = data.toString();
+            this.emit('progress', { type: 'stderr', data: output });
+            console.error(`[OpenPose stderr] ${output}`);
+        });
+
+        this.process.on('close', (code) => {
+            console.log(`[OpenPose] Process exited with code: ${code}`);
+            this.process = null; // Clear the process
+            if (code === 0) {
+                this.emit('complete', { code });
+            } else {
+                this.emit('error', new Error(`OpenPose process exited with code ${code}. Check console for details.`));
+            }
+        });
+
+        this.process.on('error', (err) => {
+            console.error('[OpenPose] Failed to start process:', err);
+            this.process = null;
+            this.emit('error', new Error(`Failed to start OpenPose process: ${err.message}`));
+        });
     }
-  }
+
+    stop() {
+        if (this.process) {
+            console.log('[OpenPose] Attempting to stop process...');
+            this.process.kill('SIGINT'); // Or 'SIGTERM'
+            this.process = null;
+        }
+    }
 }
 
-module.exports = OpenPoseWrapper;
+module.exports = { OpenPoseWrapper };

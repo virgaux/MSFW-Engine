@@ -1,31 +1,58 @@
 // preload.js
+console.log('------------------- Preload script started! -------------------');
 const { contextBridge, ipcRenderer } = require('electron');
-
+const path = require('path'); // CORRECTED: Import path module directly
 
 contextBridge.exposeInMainWorld('api', {
-    getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
+    selectVideoFile: () => ipcRenderer.invoke('select-video-file-dialog'),
+    processVideo: (config) => ipcRenderer.invoke('process-video', config),
+    getVideoMetadata: (videoPath) => ipcRenderer.invoke('get-video-metadata', videoPath),
     exportMotion: (config) => ipcRenderer.invoke('export-motion', config),
-    startOpenPose: (mode) => ipcRenderer.invoke('start-openpose', mode),
-    poseListener: (callback) => {
-        // Adds a listener and returns a cleanup function
+    loadPlugins: () => ipcRenderer.invoke('load-plugins'),
+    loadBounceConfig: () => ipcRenderer.invoke('load-bounce-config'),
+    startOpenpose: (mode) => ipcRenderer.invoke('start-openpose', mode),
+    savePlayback: (data) => ipcRenderer.invoke('save-playback', data),
+    checkFile: (filePath) => ipcRenderer.invoke('check-file', filePath),
+    loadPoseSequence: () => ipcRenderer.invoke('load-pose-sequence'),
+    chooseModelFile: () => ipcRenderer.invoke('choose-model-file'),
+    saveModelPath: (modelPath) => ipcRenderer.invoke('save-model-path', modelPath),
+    loadSavedModelPath: () => ipcRenderer.invoke('load-saved-model-path'),
+    readModelFile: (filePath) => ipcRenderer.invoke('read-model-file', filePath),
+    readLocalFile: (filePath) => ipcRenderer.invoke('read-local-file', filePath),
+    // Expose specific path methods
+    path: {
+        basename: (p) => path.basename(p) // This will now correctly use the 'path' module
+    },
+
+    // Listeners for status updates - CORRECTED to return unsubscription functions
+    onVideoProcessingStatus: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('video-processing-status', handler);
+        return () => ipcRenderer.removeListener('video-processing-status', handler);
+    },
+    onOpenposeStatus: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('openpose-status', handler);
+        return () => ipcRenderer.removeListener('openpose-status', handler);
+    },
+    onPoseData: (callback) => {
         const handler = (event, data) => callback(data);
         ipcRenderer.on('pose-data', handler);
         return () => ipcRenderer.removeListener('pose-data', handler);
     },
-    loadBounceConfig: () => ipcRenderer.invoke('load-bounce-config'),
-    savePlayback: (data) => ipcRenderer.invoke('save-playback', data),
-    loadPlugins: () => ipcRenderer.invoke('load-plugins'),
-    checkFile: (filePath) => ipcRenderer.invoke('check-file', filePath),
-    loadPoseSequence: () => ipcRenderer.invoke('load-pose-sequence'),
-    processVideo: (filePath) => {
-        // Note: progressCallback is not passed through here.
-        // If you want real-time progress, you'll need a separate ipcRenderer.on('video-progress', ...)
-        return ipcRenderer.invoke('process-video', filePath);
+    onAppNotification: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('app-notification', handler);
+        return () => ipcRenderer.removeListener('app-notification', handler);
     },
-    chooseModelFile: () => ipcRenderer.invoke('choose-model-file'),
-    saveModelPath: (modelPath) => ipcRenderer.invoke('save-model-path', modelPath),
-    loadSavedModelPath: () => ipcRenderer.invoke('load-saved-model-path'),
-    showNotification: (options) => ipcRenderer.send('show-notification', options), // <--- Changed to .send (more typical for notifications)
-    readModelFile: (filePath) => ipcRenderer.invoke('read-model-file', filePath)
+    // NEW: Expose the transcoding function
+    transcodeForPlayback: (filePath) => ipcRenderer.invoke('transcode-for-playback', filePath),
 
+    // NEW: Expose the transcoding progress listener
+    onTranscodePlaybackProgress: (callback) => {
+        ipcRenderer.on('transcode-playback-progress', (event, progress) => callback(progress));
+        return () => ipcRenderer.removeListener('transcode-playback-progress', callback);
+    },
 });
+console.log('------------------- window.api exposed! -------------------');
+// console.log('window.api content:', Object.keys(window.api)); // Uncomment for inspection if needed
