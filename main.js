@@ -167,6 +167,84 @@ app.on('window-all-closed', function () {
     if (process.platform !== 'darwin') app.quit();
 });
 
+// --- Capture Provider Loader (main.js) ---
+const providers = new Map(); // 'openpose' | 'easymocap' -> provider instance
+
+function registerOpenPoseProvider() {
+  // We will call your existing OpenPose path directly (no wrapper object required),
+  // but we still register a shim so the dispatcher is uniform.
+  providers.set('openpose', {
+    kind: 'openpose',
+    async processVideo({ filePath, startTime, endTime, webContents }) {
+      // call your existing handler code path directly (see section D below)
+      return runOpenPoseFlow({ filePath, startTime, endTime, webContents });
+    }
+  });
+}
+
+function registerEasyMocapProvider() {
+  // Load the plugin’s provider (the file you added in /plugins/easymocap/easymocapProvider.js)
+  const pluginRoot = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'plugins', 'easymocap')
+    : path.join(__dirname, 'plugins', 'easymocap');
+
+  const { EasyMocapProvider } = require(path.join(pluginRoot, 'easymocapProvider.js'));
+  const em = new EasyMocapProvider(pluginRoot);
+
+  // forward plugin logs to renderer’s console panel
+  em.on('log', (l) => {
+    const msg = `[EM] ${l.level || 'info'}: ${l.msg || ''}`;
+    if (BrowserWindow.getAllWindows()[0]) {
+      BrowserWindow.getAllWindows()[0].webContents.send('video-processing-status', { type: 'log', message: msg });
+    }
+  });
+
+  // when it finishes, you’ll get the manifest here
+  em.on('result', ({ jobId, manifest }) => {
+    // Save manifest next to output for traceability, and notify UI
+    const outFile = path.join(manifest.output, 'manifest_easymocap.json');
+    fs.writeFile(outFile, JSON.stringify(manifest, null, 2));
+    if (BrowserWindow.getAllWindows()[0]) {
+      BrowserWindow.getAllWindows()[0].webContents.send('video-processing-status', { type: 'complete', message: 'EasyMocap complete', manifest });
+    }
+  });
+
+  providers.set('easymocap', {
+    kind: 'easymocap',
+    instance: em,
+    processVideo: (opts) => em.processVideo(opts)
+  });
+}
+
+// call both at startup (after app.whenReady)
+registerOpenPoseProvider();
+registerEasyMocapProvider();
+
+async function runOpenPoseFlow({ filePath, startTime, endTime, webContents }) {
+  try {
+    webContents.send('video-processing-status', { type: 'start', message: 'Starting video processing...' });
+
+    webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
+    const { outputPath: clippedVideoOutputPath } = await processVideoForOpenPose({ filePath, startTime, endTime }, (progress) => {
+      webContents.send('video-processing-status', { type: 'clipping-progress', message: `Clipping: ${progress.percent.toFixed(1)}%`, progress });
+    });
+
+    webContents.send('video-processing-status', { type: 'openpose-start', message: 'Starting OpenPose...' });
+    await openPoseWrapper.runOpenPose(clippedVideoOutputPath, { display: 0, renderPose: 0 });
+
+    // clean up temp clip
+    try { if (await fileExists(clippedVideoOutputPath)) await fs.unlink(clippedVideoOutputPath); } catch {}
+
+    webContents.send('video-processing-status', { type: 'complete', message: 'Video processing and OpenPose complete!' });
+    return { success: true, message: 'Video processed and OpenPose run.' };
+  } catch (error) {
+    const errorMessage = `Video processing failed: ${error.message}`;
+    webContents.send('video-processing-status', { type: 'error', message: errorMessage, error: error.message });
+    throw new Error(errorMessage);
+  }
+}
+
+
 
 // --- IPC Handlers ---
 
@@ -445,58 +523,44 @@ ipcMain.handle('transcode-for-playback', async (event, filePath) => {
 
 
 // Modified process-video handler to integrate clipping and OpenPose
-ipcMain.handle('process-video', async (event, { filePath, startTime, endTime }) => {
-    const webContents = event.sender; // Get reference to the sending renderer
+ipcMain.handle('process-video', async (event, { filePath, startTime, endTime, emOptions }) => {
+  const webContents = event.sender;
 
-    try {
-        console.log(`[Main Process] Starting video processing for: ${filePath}`);
-        webContents.send('video-processing-status', { type: 'start', message: 'Starting video processing...' });
+  const settings = await getSettings();
+  const providerKey = settings.captureProvider || 'openpose';
 
-        // 1. Orchestrate video clipping via videoService.processVideoForOpenPose
-        webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
-        console.log(`[Main Process] Calling videoService.processVideoForOpenPose for clipping.`);
-        
-        // This will now clip the video and return the path to the clipped file
-        // IMPORTANT: Ensure videoService.js creates the clipped file in a temp directory and returns its path
-        const { outputPath: clippedVideoOutputPath } = await processVideoForOpenPose({ filePath, startTime, endTime }, (progress) => {
-            webContents.send('video-processing-status', { type: 'clipping-progress', message: `Clipping: ${progress.percent.toFixed(1)}%`, progress });
-        });
-        
-        console.log(`[Main Process] Video clipped to: ${clippedVideoOutputPath}`);
-        webContents.send('video-processing-status', { type: 'clipped', message: 'Video clipped successfully!' });
+  if (providerKey === 'easymocap') {
+    // 1) Clip video if you still want the same UX (re-use your clipping helper)
+    webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
+    const { outputPath: clipped } = await processVideoForOpenPose({ filePath, startTime, endTime }, (progress) => {
+      webContents.send('video-processing-status', { type: 'clipping-progress', message: `Clipping: ${progress.percent.toFixed(1)}%`, progress });
+    });
 
-        // 2. Run OpenPose on the clipped video using the globally available instance
-        webContents.send('video-processing-status', { type: 'openpose-start', message: 'Starting OpenPose...' });
-        
-        console.log(`[Main Process] Calling OpenPose on: ${clippedVideoOutputPath}`);
-        // CHANGED: Call runOpenPose on the global openPoseWrapper instance
-        await openPoseWrapper.runOpenPose(clippedVideoOutputPath, { // <--- CHANGED
-            display: 0, // Ensure display is off unless explicitly needed
-            renderPose: 0, // Ensure rendering is off unless explicitly needed
-            // Additional OpenPose options if needed (e.g., face: true, hand: true)
-        });
+    // 2) Call EM plugin with user-supplied options (path to EM, Blender, profile, etc.)
+    webContents.send('video-processing-status', { type: 'start', message: 'Starting EasyMocap...' });
 
-        // 3. Clean up temporary clipped video
-        try {
-            if (await fileExists(clippedVideoOutputPath)) { 
-                await fs.unlink(clippedVideoOutputPath);
-                console.log(`[Main Process] Cleaned up temporary clipped video: ${clippedVideoOutputPath}`); 
-            }
-        } catch (cleanupError) {
-            console.warn(`[Main Process] Failed to clean up temporary clipped video: ${cleanupError.message}`);
-        }
+    const em = providers.get('easymocap').instance;
+    const jobId = em.processVideo({
+      jobId: `em_${Date.now()}`,
+      mode: emOptions?.mode || 'monocular',
+      dataRoot: path.dirname(clipped),          // simplest: put data under same folder as clipped video
+      output: path.join(path.dirname(clipped), 'output'),
+      emcCmd: emOptions?.emcCmd || 'emc',
+      emcArgs: emOptions?.emcArgs || '--data config/datasets/svimage.yml --exp config/1v1p/hrnet_pare_finetune.yml --root {data_root}',
+      exportBVH: true,
+      profile: emOptions?.profile || 'genesis8',
+      blender: emOptions?.blenderPath || '',    // required to export BVH
+      extraEnv: Object.assign({ EASYMOCAP_ROOT: emOptions?.easymocapRoot || '' }, emOptions?.extraEnv || {})
+    });
 
-        webContents.send('video-processing-status', { type: 'complete', message: 'Video processing and OpenPose complete!' });
-        console.log('[Main Process] Video processing and OpenPose completed successfully.');
-        return { success: true, message: 'Video processed and OpenPose run.' };
+    // Done. Results come via em.on('result' ...) we wired above.
+    return { success: true, message: `EasyMocap job started: ${jobId}` };
+  }
 
-    } catch (error) {
-        const errorMessage = `Video processing failed: ${error.message}`;
-        console.error('[Main Process] Video processing error:', error);
-        webContents.send('video-processing-status', { type: 'error', message: errorMessage, error: error.message });
-        throw new Error(errorMessage);
-    }
+  // Fallback to existing OpenPose path
+  return await runOpenPoseFlow({ filePath, startTime, endTime, webContents });
 });
+
 
 
 ipcMain.on('show-notification', (event, options) => {
@@ -524,3 +588,29 @@ ipcMain.handle('read-local-file', async (event, filePath) => {
         throw new Error(`Failed to read local file: ${error.message}`);
     }
 });
+
+
+ipcMain.handle('get-capture-provider', async () => {
+  const s = await getSettings();
+  return s.captureProvider || 'openpose';
+});
+
+ipcMain.handle('set-capture-provider', async (event, provider) => {
+  const s = await getSettings();
+  s.captureProvider = provider; // 'openpose' | 'easymocap'
+  await setSettings(s);
+  return true;
+});
+
+ipcMain.handle('list-capture-providers', async () => {
+  const arr = [];
+  if (providers.has('openpose')) arr.push({ key: 'openpose', name: 'OpenPose' });
+  if (providers.has('easymocap')) {
+    // verify the EM bridge exists
+    const ok = await providers.get('easymocap').instance.detect();
+    if (ok) arr.push({ key: 'easymocap', name: 'EasyMocap' });
+  }
+  return arr;
+});
+// --- END IPC Handlers ---
+
