@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('api', {
     // processing
     processVideo: (payload) => ipcRenderer.invoke('process-video', payload),
 
-    // status streams
+    // status streams with proper cleanup
     onProcessingStatus: (cb) => {
         const handler = (_e, msg) => cb(msg);
         ipcRenderer.on('video-processing-status', handler);
@@ -64,17 +64,16 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.on('openpose-status', handler);
         return () => ipcRenderer.removeListener('openpose-status', handler);
     },
-
-    // transcoding progress (fixed cleanup)
     onTranscodePlaybackProgress: (cb) => {
         const handler = (_e, progress) => cb(progress);
         ipcRenderer.on('transcode-playback-progress', handler);
         return () => ipcRenderer.removeListener('transcode-playback-progress', handler);
     },
 
-    // EM options (persistence)
+    // EasyMocap options persistence
     getEasyMocapOptions: () => ipcRenderer.invoke('get-easymocap-options'),
     setEasyMocapOptions: (opts) => ipcRenderer.invoke('set-easymocap-options', opts),
+    cancelProcessing: () => ipcRenderer.invoke('cancel-processing'),
 
 });
 console.log('------------------- window.api exposed! -------------------');

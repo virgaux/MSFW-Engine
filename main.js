@@ -62,6 +62,9 @@ const tempVideoDir = path.join(os.tmpdir(), 'msfw_temp_playback');
 // ADDED: Declare mainWindow and openPoseWrapper globally
 let mainWindow; // <--- ADDED
 let openPoseWrapper; // <--- ADDED
+let currentJob = { provider: null, jobId: null };
+
+function setCurrentJob(p, id) { currentJob = { provider: p, jobId: id }; }
 
 function createWindow() {
     // CHANGED: Assign to global mainWindow instead of local 'win'
@@ -90,10 +93,10 @@ function createWindow() {
     console.log(`[Main Process] OpenPose base path: ${openposeBasePath}`);
     console.log(path.join(getUserDataPath(), 'openpose_output_keypoints'))
     openPoseWrapper = new OpenPoseWrapper({
-        openposePath: openposeBasePath,
-        userDataPath: getUserDataPath(), 
-        outputDir: path.join(getUserDataPath(), 'openpose_output_keypoints'), // Set default output path for OpenPose
-    }); // <--- ADDED
+        openposeBasePath: openposeBasePath,   // ✅ was openposePath
+        userDataPath: getUserDataPath(),
+        outputDir: path.join(getUserDataPath(), 'openpose_output_keypoints'),
+    });
 
     // ADDED: Set up listeners for OpenPoseWrapper events once and forward them to the renderer
     openPoseWrapper.on('progress', (data) => {
@@ -183,56 +186,63 @@ function registerOpenPoseProvider() {
 }
 
 function registerEasyMocapProvider() {
-  // Load the plugin’s provider (the file you added in /plugins/easymocap/easymocapProvider.js)
-  const pluginRoot = app.isPackaged
-    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'plugins', 'easymocap')
-    : path.join(__dirname, 'plugins', 'easymocap');
+    const pluginRoot = app.isPackaged
+        ? path.join(process.resourcesPath, 'app.asar.unpacked', 'plugins', 'easymocap')
+        : path.join(__dirname, 'plugins', 'easymocap');
 
-  const { EasyMocapProvider } = require(path.join(pluginRoot, 'easymocapProvider.js'));
-  const em = new EasyMocapProvider(pluginRoot);
+    const { EasyMocapProvider } = require(path.join(pluginRoot, 'easymocapProvider.js'));
+    const em = new EasyMocapProvider(pluginRoot);
 
-  // forward plugin logs to renderer’s console panel
-  em.on('log', (l) => {
-    const msg = `[EM] ${l.level || 'info'}: ${l.msg || ''}`;
-    if (BrowserWindow.getAllWindows()[0]) {
-      BrowserWindow.getAllWindows()[0].webContents.send('video-processing-status', { type: 'log', message: msg });
-    }
-  });
+    em.on('log', (l) => {
+        const msg = `[EM] ${l.level || 'info'}: ${l.msg || ''}`;
+        BrowserWindow.getAllWindows()[0]?.webContents.send('video-processing-status', { type: 'log', message: msg });
+    });
 
-  // when it finishes, you’ll get the manifest here
-  em.on('result', ({ jobId, manifest }) => {
-    // Save manifest next to output for traceability, and notify UI
-    const outFile = path.join(manifest.output, 'manifest_easymocap.json');
-    fs.writeFile(outFile, JSON.stringify(manifest, null, 2));
-    if (BrowserWindow.getAllWindows()[0]) {
-      BrowserWindow.getAllWindows()[0].webContents.send('video-processing-status', { type: 'complete', message: 'EasyMocap complete', manifest });
-    }
-  });
+    em.on('result', async ({ jobId, manifest }) => {
+        try {
+        const outFile = path.join(manifest.output, 'manifest_easymocap.json');
+        await fs.writeFile(outFile, JSON.stringify(manifest, null, 2), 'utf-8');
+        } catch (err) {
+        BrowserWindow.getAllWindows()[0]?.webContents.send('video-processing-status', { type: 'error', message: `Failed to write EM manifest: ${err.message}` });
+        }
+        BrowserWindow.getAllWindows()[0]?.webContents.send('video-processing-status', { type: 'complete', message: 'EasyMocap complete', manifest });
+    });
 
-  providers.set('easymocap', {
-    kind: 'easymocap',
-    instance: em,
-    processVideo: (opts) => em.processVideo(opts)
-  });
+    // ✅ forward provider errors to UI
+    em.on('error', (e) => {
+        BrowserWindow.getAllWindows()[0]?.webContents.send('video-processing-status', {
+        type: 'error',
+        message: `EasyMocap failed: ${e?.payload?.error || e?.message || 'Unknown error'}`,
+        error: e
+        });
+    });
+
+    providers.set('easymocap', { kind: 'easymocap', instance: em, processVideo: (opts) => em.processVideo(opts) });
 }
+
 
 // call both at startup (after app.whenReady)
 registerOpenPoseProvider();
 registerEasyMocapProvider();
 
-async function runOpenPoseFlow({ filePath, startTime, endTime, webContents }) {
+async function runOpenPoseFlow({ filePath, startTime, endTime, webContents, preClippedPath }) {
   try {
     webContents.send('video-processing-status', { type: 'start', message: 'Starting video processing...' });
 
-    webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
-    const { outputPath: clippedVideoOutputPath } = await processVideoForOpenPose({ filePath, startTime, endTime }, (progress) => {
-      webContents.send('video-processing-status', { type: 'clipping-progress', message: `Clipping: ${progress.percent.toFixed(1)}%`, progress });
-    });
+    // ✅ reuse pre-clipped video if provided
+    let clippedVideoOutputPath = preClippedPath;
+    if (!clippedVideoOutputPath) {
+      webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
+      const clip = await processVideoForOpenPose({ filePath, startTime, endTime }, (progress) => {
+        webContents.send('video-processing-status', { type: 'clipping-progress', message: `Clipping: ${progress.percent.toFixed(1)}%`, progress });
+      });
+      clippedVideoOutputPath = clip.outputPath;
+    }
 
     webContents.send('video-processing-status', { type: 'openpose-start', message: 'Starting OpenPose...' });
     await openPoseWrapper.runOpenPose(clippedVideoOutputPath, { display: 0, renderPose: 0 });
+    setCurrentJob('openpose', 'openpose');
 
-    // clean up temp clip
     try { if (await fileExists(clippedVideoOutputPath)) await fs.unlink(clippedVideoOutputPath); } catch {}
 
     webContents.send('video-processing-status', { type: 'complete', message: 'Video processing and OpenPose complete!' });
@@ -243,6 +253,7 @@ async function runOpenPoseFlow({ filePath, startTime, endTime, webContents }) {
     throw new Error(errorMessage);
   }
 }
+
 
 
 
@@ -524,75 +535,82 @@ ipcMain.handle('transcode-for-playback', async (event, filePath) => {
 
 // Modified process-video handler (with EM robustness)
 ipcMain.handle('process-video', async (event, { filePath, startTime, endTime, emOptions }) => {
-  const webContents = event.sender;
+    const webContents = event.sender;
 
-  const settings = await getSettings();
-  const providerKey = settings.captureProvider || 'openpose';
+    const settings = await getSettings();
+    const providerKey = settings.captureProvider || 'openpose';
 
-  // Always clip first (keeps UX the same for both engines)
-  webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
-  const { outputPath: clipped } = await processVideoForOpenPose(
-    { filePath, startTime, endTime },
-    (progress) => webContents.send('video-processing-status', {
-      type: 'clipping-progress',
-      message: `Clipping: ${progress.percent?.toFixed?.(1) ?? 0}%`,
-      progress
-    })
-  );
+    // If EasyMocap *might* need multiview folder, we’ll clip only if needed.
+    let clippedPath = null;
 
-  if (providerKey !== 'easymocap') {
-    // Fallback to existing OpenPose path
-    return await runOpenPoseFlow({ filePath, startTime, endTime, webContents });
-  }
+    if (providerKey === 'easymocap') {
+        // Merge persisted options + UI overrides
+        const emOpts = Object.assign({}, settings.easymocap || {}, emOptions || {});
+        const emPlugin = providers.get('easymocap')?.instance;
+        if (!emPlugin) {
+        const msg = 'EasyMocap plugin not available (not detected or failed to load).';
+        webContents.send('video-processing-status', { type: 'error', message: msg });
+        throw new Error(msg);
+        }
 
-  // ---- EasyMocap path below ----
-  // Merge persisted settings.easymocap with UI overrides (emOptions)
-  const emOpts = Object.assign({}, settings.easymocap || {}, emOptions || {});
-  const emPlugin = providers.get('easymocap')?.instance;
+        if (!emOpts.easymocapRoot) {
+        webContents.send('video-processing-status', { type: 'error', message: 'Set EASYMOCAP_ROOT in EasyMocap options.' });
+        throw new Error('Missing EASYMOCAP_ROOT');
+        }
+        if (emOpts.exportBVH !== false && !emOpts.blenderPath) {
+        webContents.send('video-processing-status', { type: 'error', message: 'Blender path is required to export BVH.' });
+        throw new Error('Missing Blender path');
+        }
 
-  if (!emPlugin) {
-    const msg = 'EasyMocap plugin not available (not detected or failed to load).';
-    webContents.send('video-processing-status', { type: 'error', message: msg });
-    throw new Error(msg);
-  }
+        const isMultiview = (emOpts.mode || 'monocular') === 'multiview';
 
-  // Validate required pieces early for good UX
-  if (!emOpts.easymocapRoot) {
-    webContents.send('video-processing-status', { type: 'error', message: 'Set EASYMOCAP_ROOT in EasyMocap options.' });
-    throw new Error('Missing EASYMOCAP_ROOT');
-  }
-  if (emOpts.exportBVH !== false && !emOpts.blenderPath) {
-    webContents.send('video-processing-status', { type: 'error', message: 'Blender path is required to export BVH.' });
-    throw new Error('Missing Blender path');
-  }
+        // For monocular, keep UX the same: clip first.
+        let dataRoot;
+        if (isMultiview) {
+        // Expect a prepared dataset folder with intri/extri.yml
+        dataRoot = emOpts.dataRoot || path.dirname(filePath);
+        } else {
+        webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
+        const { outputPath } = await processVideoForOpenPose({ filePath, startTime, endTime }, (progress) => {
+            webContents.send('video-processing-status', { type: 'clipping-progress', message: `Clipping: ${progress.percent?.toFixed?.(1) ?? 0}%`, progress });
+        });
+        clippedPath = outputPath;
+        dataRoot = path.dirname(outputPath);
+        }
 
-  // Data layout: monocular vs multiview
-  // If the user passed a multiview dataset folder in emOptions.dataRoot, use it.
-  // Otherwise, default to the clipped video’s folder for monocular.
-  const isMultiview = (emOpts.mode || 'monocular') === 'multiview';
-  const dataRoot = (isMultiview && emOpts.dataRoot) ? emOpts.dataRoot : path.dirname(clipped);
-  const outputDir = path.join(dataRoot, 'output');
-  await fs.mkdir(outputDir, { recursive: true });
+        const outputDir = path.join(dataRoot, 'output');
+        await fs.mkdir(outputDir, { recursive: true });
 
-  webContents.send('video-processing-status', { type: 'start', message: 'Starting EasyMocap...' });
+        webContents.send('video-processing-status', { type: 'start', message: 'Starting EasyMocap...' });
 
-  // Build and start EM job
-  const jobId = emPlugin.processVideo({
-    jobId: `em_${Date.now()}`,
-    mode: emOpts.mode || 'monocular',
-    dataRoot,
-    output: outputDir,
-    emcCmd: emOpts.emcCmd || 'emc',
-    emcArgs: emOpts.emcArgs || '--data config/datasets/svimage.yml --exp config/1v1p/hrnet_pare_finetune.yml --root {data_root}',
-    exportBVH: emOpts.exportBVH !== false, // default true
-    profile: emOpts.profile || 'genesis8',
-    blender: emOpts.blenderPath || '',
-    extraEnv: Object.assign({ EASYMOCAP_ROOT: emOpts.easymocapRoot || '' }, emOpts.extraEnv || {}),
-    pythonPath: emOpts.pythonPath || '' // requires provider to honor this (see note below)
-  });
+        const jobId = emPlugin.processVideo({
+        jobId: `em_${Date.now()}`,
+        mode: emOpts.mode || 'monocular',
+        dataRoot,
+        output: outputDir,
+        emcCmd: emOpts.emcCmd || 'emc',
+        emcArgs: emOpts.emcArgs || '--data config/datasets/svimage.yml --exp config/1v1p/hrnet_pare_finetune.yml --root {data_root}',
+        exportBVH: emOpts.exportBVH !== false,
+        profile: emOpts.profile || 'genesis8',
+        blender: emOpts.blenderPath || '',
+        extraEnv: Object.assign({ EASYMOCAP_ROOT: emOpts.easymocapRoot || '' }, emOpts.extraEnv || {}),
+        pythonPath: emOpts.pythonPath || '' // provider will honor this
+        });
 
-  // The provider will emit 'result'/'error' which you already forward in registerEasyMocapProvider()
-  return { success: true, message: `EasyMocap job started: ${jobId}` };
+        setCurrentJob('easymocap', jobId);
+
+
+        return { success: true, message: `EasyMocap job started: ${jobId}` };
+    }
+
+    // ---- OpenPose path (no double clipping): clip once then reuse
+    webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
+    const { outputPath } = await processVideoForOpenPose({ filePath, startTime, endTime }, (progress) => {
+        webContents.send('video-processing-status', { type: 'clipping-progress', message: `Clipping: ${progress.percent?.toFixed?.(1) ?? 0}%`, progress });
+    });
+    clippedPath = outputPath;
+
+    return await runOpenPoseFlow({ filePath, startTime, endTime, webContents, preClippedPath: clippedPath });
 });
 
 
@@ -657,7 +675,8 @@ ipcMain.handle('get-easymocap-options', async () => {
     profile: 'genesis8',
     emcCmd: 'emc',
     emcArgs: '--data config/datasets/svimage.yml --exp config/1v1p/hrnet_pare_finetune.yml --root {data_root}',
-    pythonPath: ''
+    pythonPath: '',
+    exportBVH: true
   };
 });
 
@@ -668,6 +687,21 @@ ipcMain.handle('set-easymocap-options', async (_e, opts) => {
   return true;
 });
 
+ipcMain.handle('cancel-processing', async () => {
+  if (!currentJob.provider) return false;
+  if (currentJob.provider === 'openpose') {
+    try { await openPoseWrapper.stop(); } catch {}
+    currentJob = { provider: null, jobId: null };
+    return true;
+  }
+  if (currentJob.provider === 'easymocap') {
+    const inst = providers.get('easymocap')?.instance;
+    if (inst) inst.cancel(currentJob.jobId);
+    currentJob = { provider: null, jobId: null };
+    return true;
+  }
+  return false;
+});
 
 // --- END IPC Handlers ---
 
