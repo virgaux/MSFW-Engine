@@ -31,11 +31,7 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.on('video-processing-status', handler);
         return () => ipcRenderer.removeListener('video-processing-status', handler);
     },
-    onOpenposeStatus: (callback) => {
-        const handler = (event, data) => callback(data);
-        ipcRenderer.on('openpose-status', handler);
-        return () => ipcRenderer.removeListener('openpose-status', handler);
-    },
+
     onPoseData: (callback) => {
         const handler = (event, data) => callback(data);
         ipcRenderer.on('pose-data', handler);
@@ -49,10 +45,36 @@ contextBridge.exposeInMainWorld('api', {
     // NEW: Expose the transcoding function
     transcodeForPlayback: (filePath) => ipcRenderer.invoke('transcode-for-playback', filePath),
 
-    // NEW: Expose the transcoding progress listener
-    onTranscodePlaybackProgress: (callback) => {
-        ipcRenderer.on('transcode-playback-progress', (event, progress) => callback(progress));
-        return () => ipcRenderer.removeListener('transcode-playback-progress', callback);
+     // capture provider controls
+    getCaptureProvider: () => ipcRenderer.invoke('get-capture-provider'),
+    setCaptureProvider: (p) => ipcRenderer.invoke('set-capture-provider', p),
+    listCaptureProviders: () => ipcRenderer.invoke('list-capture-providers'),
+
+    // processing
+    processVideo: (payload) => ipcRenderer.invoke('process-video', payload),
+
+    // status streams
+    onProcessingStatus: (cb) => {
+        const handler = (_e, msg) => cb(msg);
+        ipcRenderer.on('video-processing-status', handler);
+        return () => ipcRenderer.removeListener('video-processing-status', handler);
     },
+    onOpenPoseStatus: (cb) => {
+        const handler = (_e, msg) => cb(msg);
+        ipcRenderer.on('openpose-status', handler);
+        return () => ipcRenderer.removeListener('openpose-status', handler);
+    },
+
+    // transcoding progress (fixed cleanup)
+    onTranscodePlaybackProgress: (cb) => {
+        const handler = (_e, progress) => cb(progress);
+        ipcRenderer.on('transcode-playback-progress', handler);
+        return () => ipcRenderer.removeListener('transcode-playback-progress', handler);
+    },
+
+    // EM options (persistence)
+    getEasyMocapOptions: () => ipcRenderer.invoke('get-easymocap-options'),
+    setEasyMocapOptions: (opts) => ipcRenderer.invoke('set-easymocap-options', opts),
+
 });
 console.log('------------------- window.api exposed! -------------------');

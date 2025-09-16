@@ -522,44 +522,79 @@ ipcMain.handle('transcode-for-playback', async (event, filePath) => {
 });
 
 
-// Modified process-video handler to integrate clipping and OpenPose
+// Modified process-video handler (with EM robustness)
 ipcMain.handle('process-video', async (event, { filePath, startTime, endTime, emOptions }) => {
   const webContents = event.sender;
 
   const settings = await getSettings();
   const providerKey = settings.captureProvider || 'openpose';
 
-  if (providerKey === 'easymocap') {
-    // 1) Clip video if you still want the same UX (re-use your clipping helper)
-    webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
-    const { outputPath: clipped } = await processVideoForOpenPose({ filePath, startTime, endTime }, (progress) => {
-      webContents.send('video-processing-status', { type: 'clipping-progress', message: `Clipping: ${progress.percent.toFixed(1)}%`, progress });
-    });
+  // Always clip first (keeps UX the same for both engines)
+  webContents.send('video-processing-status', { type: 'clipping', message: 'Clipping video...' });
+  const { outputPath: clipped } = await processVideoForOpenPose(
+    { filePath, startTime, endTime },
+    (progress) => webContents.send('video-processing-status', {
+      type: 'clipping-progress',
+      message: `Clipping: ${progress.percent?.toFixed?.(1) ?? 0}%`,
+      progress
+    })
+  );
 
-    // 2) Call EM plugin with user-supplied options (path to EM, Blender, profile, etc.)
-    webContents.send('video-processing-status', { type: 'start', message: 'Starting EasyMocap...' });
-
-    const em = providers.get('easymocap').instance;
-    const jobId = em.processVideo({
-      jobId: `em_${Date.now()}`,
-      mode: emOptions?.mode || 'monocular',
-      dataRoot: path.dirname(clipped),          // simplest: put data under same folder as clipped video
-      output: path.join(path.dirname(clipped), 'output'),
-      emcCmd: emOptions?.emcCmd || 'emc',
-      emcArgs: emOptions?.emcArgs || '--data config/datasets/svimage.yml --exp config/1v1p/hrnet_pare_finetune.yml --root {data_root}',
-      exportBVH: true,
-      profile: emOptions?.profile || 'genesis8',
-      blender: emOptions?.blenderPath || '',    // required to export BVH
-      extraEnv: Object.assign({ EASYMOCAP_ROOT: emOptions?.easymocapRoot || '' }, emOptions?.extraEnv || {})
-    });
-
-    // Done. Results come via em.on('result' ...) we wired above.
-    return { success: true, message: `EasyMocap job started: ${jobId}` };
+  if (providerKey !== 'easymocap') {
+    // Fallback to existing OpenPose path
+    return await runOpenPoseFlow({ filePath, startTime, endTime, webContents });
   }
 
-  // Fallback to existing OpenPose path
-  return await runOpenPoseFlow({ filePath, startTime, endTime, webContents });
+  // ---- EasyMocap path below ----
+  // Merge persisted settings.easymocap with UI overrides (emOptions)
+  const emOpts = Object.assign({}, settings.easymocap || {}, emOptions || {});
+  const emPlugin = providers.get('easymocap')?.instance;
+
+  if (!emPlugin) {
+    const msg = 'EasyMocap plugin not available (not detected or failed to load).';
+    webContents.send('video-processing-status', { type: 'error', message: msg });
+    throw new Error(msg);
+  }
+
+  // Validate required pieces early for good UX
+  if (!emOpts.easymocapRoot) {
+    webContents.send('video-processing-status', { type: 'error', message: 'Set EASYMOCAP_ROOT in EasyMocap options.' });
+    throw new Error('Missing EASYMOCAP_ROOT');
+  }
+  if (emOpts.exportBVH !== false && !emOpts.blenderPath) {
+    webContents.send('video-processing-status', { type: 'error', message: 'Blender path is required to export BVH.' });
+    throw new Error('Missing Blender path');
+  }
+
+  // Data layout: monocular vs multiview
+  // If the user passed a multiview dataset folder in emOptions.dataRoot, use it.
+  // Otherwise, default to the clipped video’s folder for monocular.
+  const isMultiview = (emOpts.mode || 'monocular') === 'multiview';
+  const dataRoot = (isMultiview && emOpts.dataRoot) ? emOpts.dataRoot : path.dirname(clipped);
+  const outputDir = path.join(dataRoot, 'output');
+  await fs.mkdir(outputDir, { recursive: true });
+
+  webContents.send('video-processing-status', { type: 'start', message: 'Starting EasyMocap...' });
+
+  // Build and start EM job
+  const jobId = emPlugin.processVideo({
+    jobId: `em_${Date.now()}`,
+    mode: emOpts.mode || 'monocular',
+    dataRoot,
+    output: outputDir,
+    emcCmd: emOpts.emcCmd || 'emc',
+    emcArgs: emOpts.emcArgs || '--data config/datasets/svimage.yml --exp config/1v1p/hrnet_pare_finetune.yml --root {data_root}',
+    exportBVH: emOpts.exportBVH !== false, // default true
+    profile: emOpts.profile || 'genesis8',
+    blender: emOpts.blenderPath || '',
+    extraEnv: Object.assign({ EASYMOCAP_ROOT: emOpts.easymocapRoot || '' }, emOpts.extraEnv || {}),
+    pythonPath: emOpts.pythonPath || '' // requires provider to honor this (see note below)
+  });
+
+  // The provider will emit 'result'/'error' which you already forward in registerEasyMocapProvider()
+  return { success: true, message: `EasyMocap job started: ${jobId}` };
 });
+
 
 
 
@@ -612,5 +647,27 @@ ipcMain.handle('list-capture-providers', async () => {
   }
   return arr;
 });
+
+ipcMain.handle('get-easymocap-options', async () => {
+  const s = await getSettings();
+  return s.easymocap || {
+    mode: 'monocular',
+    easymocapRoot: '',
+    blenderPath: '',
+    profile: 'genesis8',
+    emcCmd: 'emc',
+    emcArgs: '--data config/datasets/svimage.yml --exp config/1v1p/hrnet_pare_finetune.yml --root {data_root}',
+    pythonPath: ''
+  };
+});
+
+ipcMain.handle('set-easymocap-options', async (_e, opts) => {
+  const s = await getSettings();
+  s.easymocap = Object.assign({}, s.easymocap || {}, opts);
+  await setSettings(s);
+  return true;
+});
+
+
 // --- END IPC Handlers ---
 

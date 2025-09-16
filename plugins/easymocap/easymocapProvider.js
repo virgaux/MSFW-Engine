@@ -8,6 +8,8 @@ const { spawn } = require("child_process");
 const { EventEmitter } = require("events");
 const path = require("path");
 const fs = require("fs");
+const pyExe = (opts && opts.pythonPath) ? opts.pythonPath : (process.platform === 'win32' ? 'python' : 'python3');
+const child = spawn(pyExe, [bridgePath, ...args], { cwd: this.pluginRoot, env: pyEnv, stdio: ['ignore','pipe','pipe'] });
 
 class EasyMocapProvider extends EventEmitter {
   constructor(pluginRoot) {
