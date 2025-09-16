@@ -264,4 +264,5 @@ class OpenPoseWrapper extends EventEmitter {
     }
 }
 
+
 module.exports = { OpenPoseWrapper };
