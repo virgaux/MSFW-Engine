@@ -1,0 +1,14 @@
+{
+  "genesis8": {
+    "axis": "Zforward_Yup",
+    "scale_cm": 100.0,
+    "apose_offset_deg": { "shoulder_out": 8.0 },
+    "units": "cm"
+  },
+  "genesis9": {
+    "axis": "Zforward_Yup",
+    "scale_cm": 100.0,
+    "apose_offset_deg": { "shoulder_out": 8.0 },
+    "units": "cm"
+  }
+}

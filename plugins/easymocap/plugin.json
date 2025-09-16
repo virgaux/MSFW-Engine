@@ -1,0 +1,19 @@
+{
+  "name": "easymocap",
+  "version": "0.1.0",
+  "description": "EasyMocap capture provider plugin for MSFW Engine",
+  "provides": ["capture"],
+  "entry": "./easymocapProvider.js",
+  "bridge": "./bridge/easymocap_bridge.py",
+  "post": {
+    "convert2bvh": "./post/convert2bvh_genesis.py"
+  },
+  "env": {
+    "conda": "./env/conda.yml"
+  },
+  "profiles": {
+    "genesis8": "./profiles/mapping_genesis8.json",
+    "genesis9": "./profiles/mapping_genesis9.json",
+    "exportOptions": "./profiles/export_options.json"
+  }
+}

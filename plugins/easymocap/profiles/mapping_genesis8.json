@@ -1,0 +1,22 @@
+{
+  "map": {
+    "pelvis": "hip",
+    "left_hip": "lThigh",
+    "left_knee": "lShin",
+    "left_ankle": "lFoot",
+    "right_hip": "rThigh",
+    "right_knee": "rShin",
+    "right_ankle": "rFoot",
+    "spine1": "abdomenLower",
+    "spine2": "abdomenUpper",
+    "spine3": "chestLower",
+    "neck": "neckLower",
+    "head": "head",
+    "l_shoulder": "lCollar",
+    "l_elbow": "lForeArm",
+    "l_wrist": "lHand",
+    "r_shoulder": "rCollar",
+    "r_elbow": "rForeArm",
+    "r_wrist": "rHand"
+  }
+}

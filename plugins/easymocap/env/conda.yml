@@ -1,0 +1,17 @@
+name: msfw-easymocap
+channels: [conda-forge, pytorch, nvidia]
+dependencies:
+  - python=3.10
+  - pip
+  - numpy=1.24.*
+  - pyyaml
+  - tqdm
+  - opencv
+  - scipy
+  - pytorch
+  - pytorch-cuda=12.1  # adjust to your CUDA
+  - pip:
+      - chumpy
+      - psutil
+      - jsonschema
+      # Optional: if you keep EM as a git submodule, install editable from local path later
